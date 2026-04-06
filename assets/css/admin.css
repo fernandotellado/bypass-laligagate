@@ -1,0 +1,55 @@
+/**
+ * Bypass LaLigaGate - Admin styles
+ * @package Bypass_LaLigaGate
+ */
+
+.ayudawp-blg-wrap { max-width: 1100px; }
+.ayudawp-blg-wrap h1 small { font-size: 12px; color: #666; font-weight: normal; margin-left: 4px; }
+
+.ayudawp-blg-card { background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 16px 24px 20px; margin: 16px 0; }
+.ayudawp-blg-card h2 { margin: 0 0 12px; padding: 0; font-size: 14px; font-weight: 600; }
+.ayudawp-blg-card .form-table { margin-top: 0; }
+.ayudawp-blg-card .form-table th { padding-top: 16px; width: 220px; }
+.ayudawp-blg-card--status { background: #f9f9f9; border-color: #8c8f94; }
+
+.ayudawp-blg-status-table { border-collapse: collapse; margin-bottom: 4px; }
+.ayudawp-blg-status-table th { text-align: left; padding: 6px 16px 6px 0; font-weight: 600; white-space: nowrap; width: 200px; }
+.ayudawp-blg-status-table td { padding: 6px 8px 6px 0; vertical-align: middle; }
+.blg-status-detail { font-size: 13px; color: #50575e; }
+.blg-status-detail a { color: #2271b1; text-decoration: none; margin-left: 6px; }
+.blg-status-detail a:hover { text-decoration: underline; }
+
+.blg-badge { display: inline-block; padding: 2px 10px; border-radius: 3px; font-weight: 600; font-size: 12px; }
+.blg-badge-ok { background: #d4edda; color: #155724; }
+.blg-badge-danger { background: #f8d7da; color: #721c24; }
+.blg-badge-warning { background: #fff3cd; color: #856404; }
+
+.ayudawp-blg-manual-actions { margin-top: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.ayudawp-blg-action-msg { display: none; margin-top: 10px; padding: 8px 14px; border-radius: 3px; font-size: 13px; background: #f0f0f1; border: 1px solid #dcdcde; line-height: 1.5; }
+.ayudawp-blg-action-msg--visible { display: block; }
+.blg-msg-error { color: #d63638; background: #fcf0f1; border-color: #d63638; }
+.blg-msg-success { color: #00a32a; background: #edfaef; border-color: #00a32a; }
+
+.blg-important-note { background: #fff8e1; border: 1px solid #f0c36d; border-radius: 3px; padding: 8px 14px; margin: 0 0 8px; font-size: 13px; color: #6d5100; }
+
+.blg-help-box { background: #f6f7f7; border: 1px solid #dcdcde; border-radius: 3px; padding: 8px 14px; margin-top: 8px; font-size: 13px; line-height: 1.5; }
+.blg-help-box p { margin: 4px 0; }
+.blg-help-box ol { margin: 6px 0 6px 18px; padding: 0; }
+.blg-help-box ol li { margin-bottom: 3px; }
+.blg-help-box code { font-size: 12px; background: #e8e8e8; padding: 1px 5px; border-radius: 2px; }
+
+/* Code blocks: dark text on light background for maximum readability */
+.blg-code-block { display: block; word-break: break-all; padding: 10px 14px; margin: 6px 0; background: #eaeaea; color: #1d2327; border: 1px solid #c3c4c7; border-radius: 3px; font-family: Consolas, Monaco, monospace; font-size: 13px; line-height: 1.6; }
+
+.ayudawp-blg-dns-scroll { overflow-x: auto; margin: 10px 0 4px; }
+.ayudawp-blg-dns-table { min-width: 860px; }
+.ayudawp-blg-dns-table .check-column { width: 30px; padding: 8px; }
+.ayudawp-blg-dns-table td, .ayudawp-blg-dns-table th { vertical-align: middle; }
+.ayudawp-blg-dns-table code { font-size: 12px; background: #f0f0f1; padding: 2px 6px; border-radius: 2px; }
+.blg-proxy-on { color: #00a32a; font-weight: 600; }
+.blg-proxy-off { color: #d63638; font-weight: 600; }
+
+.ayudawp-blg-footer { margin-top: 20px; color: #999; font-size: 12px; }
+.ayudawp-blg-footer a { color: #999; }
+.ayudawp-blg-wrap .button[disabled] { opacity: 0.6; cursor: not-allowed; }
