@@ -1,18 +1,18 @@
 # Bypass LaLigaGate
 
-Plugin de WordPress que gestiona el proxy de Cloudflare automáticamente durante los bloqueos de IP por partidos de fútbol en España.
+Plugin para WordPress que gestiona el proxy de Cloudflare automáticamente durante los bloqueos de IP por partidos de fútbol en España.
 
-## El problema
+## ¿Por qué?
 
 Cada vez que hay fútbol en España se aplican bloqueos judiciales masivos de IPs para combatir la piratería de retransmisiones. Estas órdenes de bloqueo afectan a IPs de Cloudflare que comparten miles de webs legítimas, dejándolas inaccesibles para los usuarios de operadoras españolas.
 
-Si tu web está detrás del proxy de Cloudflare (la nubecita naranja), puede quedar bloqueada sin tener nada que ver con el fútbol.
+Si tu web está detrás del proxy de Cloudflare (la nubecita naranja), puede quedar bloqueada aunque no tenga nada que ver con el fútbol.
 
-## La solución
+## ¿Qué hace el plugin?
 
-El plugin consulta [hayahora.futbol](https://hayahora.futbol/) cada X minutos. Si detecta bloqueos activos, desactiva el proxy de Cloudflare en los registros DNS que hayas elegido, pasando de **Proxied (CDN)** a **DNS Only**. Cuando terminan los bloqueos y pasa un periodo de espera configurable, reactiva el proxy automáticamente.
+El plugin consulta [hayahora.futbol](https://hayahora.futbol/) cada X minutos (configurable). Si detecta bloqueos activos desactiva el proxy de Cloudflare en los registros DNS que hayas elegido, pasando de **Proxied (CDN)** a **DNS Only**. Cuando terminan los bloqueos y pasa un periodo de espera (también configurable), reactiva el proxy automáticamente. Tambíen tiene botones de activación y desactivación manuak del proxy.
 
-Funciona en **modo preventivo**: no espera a que bloqueen tu dominio concreto, actúa en cuanto detecta que hay bloqueos activos en general.
+La desactivación automática del proxty funciona en **modo preventivo**: no espera a que bloqueen tu dominio concreto, actúa en cuanto detecta que hay bloqueos activos en general, más seguro y menos consultas externas y al cron.
 
 ## Qué hace
 
@@ -22,7 +22,7 @@ Funciona en **modo preventivo**: no espera a que bloqueen tu dominio concreto, a
 - Botones manuales para forzar proxy OFF o restaurar ON
 - Email al administrador cuando el proxy se desactiva o reactiva automáticamente
 - Soporte para Global API Key y API Token de Cloudflare
-- Endpoint para cron externo con token de seguridad
+- Endpoint para cron externo con token de seguridad (opcional)
 - Al desactivar el plugin se restaura el proxy automáticamente
 
 ## Estructura
