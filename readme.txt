@@ -2,9 +2,9 @@
 Contributors: fernandot, ayudawp
 Tags: cloudflare, dns, futbol, bypass, proxy
 Requires at least: 5.6
-Tested up to: 6.9
+Tested up to: 6.9.4
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -91,6 +91,9 @@ Sí. Envía un email al administrador del sitio cuando el proxy se desactiva aut
 No, solo con Cloudflare. Los DNS del dominio deben estar gestionados por Cloudflare.
 
 == Registro de cambios ==
+
+= 1.0.1 =
+- Fixed: block detection now correctly parses hayahora.futbol JSON structure with numerically-indexed arrays containing IP objects with stateChanges
 
 = 1.0.0 =
 - Versión inicial
