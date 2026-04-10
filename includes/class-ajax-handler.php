@@ -184,6 +184,7 @@ class AyudaWP_BLG_Ajax_Handler {
 			'message'   => $msg,
 			'blocked'   => $state['last_status'],
 			'bypass'    => $is_bypass ? 'SI' : 'NO',
+			'manual'    => ! empty( $state['manual_override'] ),
 			'lastCheck' => $state['last_check'],
 		) );
 	}
