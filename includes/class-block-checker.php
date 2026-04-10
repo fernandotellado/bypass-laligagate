@@ -270,6 +270,17 @@ class AyudaWP_BLG_Block_Checker {
 			}
 		}
 
+		/*
+		 * Staleness threshold: if the latest state is "blocked" but older
+		 * than 6 hours, treat it as unblocked. This prevents orphaned
+		 * entries in the JSON (where a state:false was never recorded)
+		 * from keeping the bypass active indefinitely.
+		 */
+		$max_stale_seconds = (int) apply_filters( 'ayudawp_blg_stale_threshold', 6 * HOUR_IN_SECONDS );
+		if ( true === $state && null !== $max_ts && ( time() - $max_ts ) > $max_stale_seconds ) {
+			$state = false;
+		}
+
 		return $state;
 	}
 }
