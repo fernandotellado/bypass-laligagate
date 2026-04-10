@@ -136,4 +136,4 @@ GPLv2 o posterior. Puedes usar, modificar y distribuir el plugin libremente bajo
 
 ## Autor
 
-Desarrollado por [Mantenimiento WordPress de AyudaWP](https://mantenimiento.ayudawp.com) a partir de [este otro desarrollo](https://github.com/dcarrero/cf-football-bypass) de David Carrero.
+Desarrollado por [Fernando Tellado](https://ayudawp.com) para los clientes de [Mantenimiento WordPress de AyudaWP](https://mantenimiento.ayudawp.com) a partir de [este otro desarrollo](https://github.com/dcarrero/cf-football-bypass) de David Carrero.
