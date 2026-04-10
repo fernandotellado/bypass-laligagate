@@ -124,11 +124,15 @@ Si fuerzas el proxy OFF manualmente, el cron automático **no lo cambiará** has
 
 ## Registro de cambios
 
+### 1.0.2
+- Fixed: orphaned block entries older than 6 hours in hayahora.futbol JSON are now ignored, preventing the bypass from staying active indefinitely
+- Added: filterable staleness threshold via `ayudawp_blg_stale_threshold` (default 6 hours)
+
 ### 1.0.1
-- Corregido: la deteccion de bloqueos ahora analiza correctamente la estructura del JSON de hayahora.futbol con arrays indexados numéricamente que contienen objetos IP con cambios de estado
+- Fixed: block detection now correctly parses hayahora.futbol JSON structure with numerically-indexed arrays containing IP objects with stateChanges
 
 ### 1.0.0
-- Versión inicial
+- Initial release
 
 ## Licencia
 
