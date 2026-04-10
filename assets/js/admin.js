@@ -56,13 +56,25 @@
 		var b = document.getElementById( 'blg-status-blocked' );
 		var p = document.getElementById( 'blg-status-bypass' );
 		var l = document.getElementById( 'blg-status-lastcheck' );
+		var db = document.getElementById( 'blg-detail-blocked' );
+		var dp = document.getElementById( 'blg-detail-bypass' );
 		if ( b && d.blocked !== undefined ) {
 			var isB = d.blocked === 'SI';
 			b.innerHTML = '<span class="blg-badge ' + ( isB ? 'blg-badge-danger' : 'blg-badge-ok' ) + '">' + ( isB ? 'SI' : 'NO' ) + '</span>';
+			if ( db ) {
+				var txt = isB ? 'Hay partidos con bloqueos activos.' : 'No se detectan bloqueos en este momento.';
+				db.innerHTML = txt + ' <a href="https://hayahora.futbol/" target="_blank" rel="noopener">Ver hayahora.futbol</a>';
+			}
 		}
 		if ( p && d.bypass !== undefined ) {
 			var isP = d.bypass === 'SI';
 			p.innerHTML = '<span class="blg-badge ' + ( isP ? 'blg-badge-warning' : 'blg-badge-ok' ) + '">' + ( isP ? 'SI' : 'NO' ) + '</span>';
+			if ( dp ) {
+				var bypassText = isP
+					? ( d.manual ? 'Forzado manualmente. Pulsa "Restaurar proxy ON" para devolver el control al cron.' : 'Activado automáticamente por detección de bloqueos.' )
+					: 'Proxy activo (CDN). Funcionamiento normal.';
+				dp.textContent = bypassText;
+			}
 		}
 		if ( l && d.lastCheck ) { l.textContent = d.lastCheck; }
 	}
@@ -110,7 +122,7 @@
 				if ( r.success ) {
 					var hasErr = r.data.message && r.data.message.indexOf( 'Error' ) !== -1;
 					showMsg( actionStatus, r.data.message, hasErr ? 'error' : 'success' );
-					updateStatus( { bypass: r.data.bypass || 'SI' } );
+					updateStatus( { bypass: r.data.bypass || 'SI', manual: true } );
 					if ( r.data.html ) { refreshDns( r.data.html ); }
 				} else {
 					showMsg( actionStatus, ( r.data && r.data.message ) || 'Error', 'error' );
@@ -129,7 +141,7 @@
 				if ( r.success ) {
 					var hasErr = r.data.message && r.data.message.indexOf( 'Error' ) !== -1;
 					showMsg( actionStatus, r.data.message, hasErr ? 'error' : 'success' );
-					updateStatus( { bypass: r.data.bypass || 'NO' } );
+					updateStatus( { bypass: r.data.bypass || 'NO', manual: false } );
 					if ( r.data.html ) { refreshDns( r.data.html ); }
 				} else {
 					showMsg( actionStatus, ( r.data && r.data.message ) || 'Error', 'error' );
