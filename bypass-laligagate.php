@@ -3,7 +3,7 @@
  * Plugin Name: Bypass LaLigaGate
  * Plugin URI: https://mantenimiento.ayudawp.com
  * Description: Gestiona automáticamente el proxy de Cloudflare durante los bloqueos de IP por partidos de fútbol en España, alternando entre Proxied (CDN) y DNS Only.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Mantenimiento WordPress
  * Author URI: https://mantenimiento.ayudawp.com
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'AYUDAWP_BLG_VERSION', '1.0.0' );
+define( 'AYUDAWP_BLG_VERSION', '1.0.1' );
 define( 'AYUDAWP_BLG_FILE', __FILE__ );
 define( 'AYUDAWP_BLG_DIR', plugin_dir_path( __FILE__ ) );
 define( 'AYUDAWP_BLG_URL', plugin_dir_url( __FILE__ ) );
