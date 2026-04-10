@@ -8,11 +8,11 @@ Cada vez que hay fútbol en España se aplican bloqueos judiciales masivos de IP
 
 Si tu web está detrás del proxy de Cloudflare (la nubecita naranja), puede quedar bloqueada aunque no tenga nada que ver con el fútbol.
 
-## ¿Cómo funciona el plugin?
+## ¿Qué hace el plugin?
 
-El plugin consulta [hayahora.futbol](https://hayahora.futbol/) cada X minutos (configurable). Si detecta bloqueos activos desactiva el proxy de Cloudflare en los registros DNS que hayas elegido, pasando de **Proxied (CDN)** a **DNS Only**. Cuando terminan los bloqueos y pasa un periodo de espera (también configurable), reactiva el proxy automáticamente. Tambíen tiene botones de activación y desactivación manuak del proxy.
+El plugin consulta [hayahora.futbol](https://hayahora.futbol/) cada X minutos (configurable). Si detecta bloqueos activos desactiva el proxy de Cloudflare en los registros DNS que hayas elegido, pasando de **Proxied (CDN)** a **DNS Only**. Cuando terminan los bloqueos y pasa un periodo de espera (también configurable), reactiva el proxy automáticamente. También tiene botones de activación y desactivación manual del proxy.
 
-La desactivación automática del proxty funciona en **modo preventivo**: no espera a que bloqueen tu dominio concreto, actúa en cuanto detecta que hay bloqueos activos en general, más seguro y menos consultas externas y al cron.
+La desactivación automática del proxy funciona en **modo preventivo**: no espera a que bloqueen tu dominio concreto, actúa en cuanto detecta que hay bloqueos activos en general, más seguro y menos consultas externas y al cron.
 
 ## Qué hace
 
@@ -122,6 +122,14 @@ Si fuerzas el proxy OFF manualmente, el cron automático **no lo cambiará** has
 - **[hayahora.futbol](https://hayahora.futbol/)** — Datos de bloqueos activos. Se envía una petición GET con la URL del sitio en el User-Agent. No se transmiten datos personales.
 - **[API de Cloudflare](https://developers.cloudflare.com/api/)** — Lectura de registros DNS y cambio del estado del proxy. Las credenciales se envían por HTTPS.
 
+## Registro de cambios
+
+### 1.0.1
+- Fixed: block detection now correctly parses hayahora.futbol JSON structure with numerically-indexed arrays containing IP objects with stateChanges
+
+### 1.0.0
+- Initial release
+
 ## Licencia
 
 GPLv2 o posterior. Puedes usar, modificar y distribuir el plugin libremente bajo los términos de la GPL.
@@ -129,4 +137,3 @@ GPLv2 o posterior. Puedes usar, modificar y distribuir el plugin libremente bajo
 ## Autor
 
 Desarrollado por [Mantenimiento WordPress de AyudaWP](https://mantenimiento.ayudawp.com).
-Es un fork de [este otro de David Carrero](https://github.com/dcarrero/cf-football-bypass), adaptado a mis necesidades y gustos (¡Gracias!)
