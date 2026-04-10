@@ -123,6 +123,23 @@ class AyudaWP_BLG_Block_Checker {
 		}
 
 		foreach ( $ips_data as $ip => $value ) {
+			/*
+			 * Handle numerically-indexed arrays where each element
+			 * is an object with 'ip' and 'stateChanges' fields.
+			 * Example: {"data": [{"ip": "1.2.3.4", "isp": "X", "stateChanges": [...]}]}
+			 */
+			if ( is_int( $ip ) && is_array( $value ) && ! empty( $value['ip'] ) ) {
+				$real_ip = $value['ip'];
+				$blocked = $this->extract_blocked_from_object( $value );
+				if ( null !== $blocked ) {
+					/* If any ISP entry for this IP is blocked, mark as blocked */
+					if ( ! isset( $map[ $real_ip ] ) || true === $blocked ) {
+						$map[ $real_ip ] = $blocked;
+					}
+				}
+				continue;
+			}
+
 			if ( ! is_string( $ip ) ) {
 				continue;
 			}
