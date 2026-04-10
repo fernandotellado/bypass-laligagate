@@ -82,7 +82,7 @@ class AyudaWP_BLG_Admin_Page {
 					<tr>
 						<th>Bloqueos activos</th>
 						<td id="blg-status-blocked"><span class="blg-badge <?php echo $is_blocked ? 'blg-badge-danger' : 'blg-badge-ok'; ?>"><?php echo $is_blocked ? 'SI' : 'NO'; ?></span></td>
-						<td class="blg-status-detail">
+						<td class="blg-status-detail" id="blg-detail-blocked">
 							<?php if ( $is_blocked ) : ?>
 								Hay partidos con bloqueos activos.
 							<?php elseif ( $has_checked ) : ?>
@@ -96,7 +96,7 @@ class AyudaWP_BLG_Admin_Page {
 					<tr>
 						<th>Bypass activo (proxy OFF)</th>
 						<td id="blg-status-bypass"><span class="blg-badge <?php echo $is_bypass ? 'blg-badge-warning' : 'blg-badge-ok'; ?>"><?php echo $is_bypass ? 'SI' : 'NO'; ?></span></td>
-						<td class="blg-status-detail">
+						<td class="blg-status-detail" id="blg-detail-bypass">
 							<?php if ( $is_manual ) : ?>
 								Forzado manualmente. Pulsa "Restaurar proxy ON" para devolver el control al cron.
 							<?php elseif ( $is_bypass ) : ?>
