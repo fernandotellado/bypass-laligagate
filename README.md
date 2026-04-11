@@ -1,4 +1,4 @@
-# Bypass LaLigaGate
+# ¿Hay ahora fútbol? – Bypass #LaLigaGate
 
 Plugin para WordPress que gestiona el proxy de Cloudflare automáticamente durante los bloqueos de IP por partidos de fútbol en España.
 
