@@ -29,6 +29,7 @@
 .ayudawp-blg-action-msg { display: none; margin-top: 10px; padding: 8px 14px; border-radius: 3px; font-size: 13px; background: #f0f0f1; border: 1px solid #dcdcde; line-height: 1.5; }
 .ayudawp-blg-action-msg--visible { display: block; }
 .blg-msg-error { color: #d63638; background: #fcf0f1; border-color: #d63638; }
+.blg-msg-warning { color: #856404; background: #fff8e1; border-color: #f0c36d; }
 .blg-msg-success { color: #00a32a; background: #edfaef; border-color: #00a32a; }
 
 .blg-important-note { background: #fff8e1; border: 1px solid #f0c36d; border-radius: 3px; padding: 8px 14px; margin: 0 0 8px; font-size: 13px; color: #6d5100; }
