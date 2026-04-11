@@ -26,18 +26,21 @@ class AyudaWP_BLG_Block_Checker {
 	private $json_url = 'https://hayahora.futbol/estado/data.json';
 
 	/**
-	 * Check if there are active blocks (preventive mode).
+	 * Check if there are active blocks filtered by ISP count.
 	 *
-	 * Returns true if any IP in the JSON is marked as blocked,
-	 * meaning there is an active football event causing blocks.
+	 * Returns true only when the number of distinct ISPs reporting
+	 * blocked IPs meets or exceeds $min_isps. This avoids false
+	 * positives from a single ISP with network issues.
 	 *
-	 * @return array{blocked: bool, last_update: string, error: string}
+	 * @param int $min_isps Minimum ISPs with blocks to trigger (default 2).
+	 * @return array{blocked: bool, last_update: string, error: string, blocked_isps: int}
 	 */
-	public function check_status() {
+	public function check_status( $min_isps = 2 ) {
 		$result = array(
-			'blocked'     => false,
-			'last_update' => '',
-			'error'       => '',
+			'blocked'      => false,
+			'last_update'  => '',
+			'error'        => '',
+			'blocked_isps' => 0,
 		);
 
 		$response = wp_remote_get( $this->json_url, array(
@@ -70,18 +73,67 @@ class AyudaWP_BLG_Block_Checker {
 			$result['last_update'] = $json['lastUpdate'];
 		}
 
-		/* Extract IP block map */
-		$ip_map = $this->extract_ip_map( $json );
+		/* Count distinct ISPs with blocked IPs */
+		$blocked_isps              = $this->count_blocked_isps( $json );
+		$result['blocked_isps']    = $blocked_isps;
+		$result['blocked']         = ( $blocked_isps >= max( 1, $min_isps ) );
 
-		/* Preventive mode: if any IP is blocked, there is active football blocking */
-		foreach ( $ip_map as $ip => $blocked ) {
-			if ( true === $blocked ) {
-				$result['blocked'] = true;
+		return $result;
+	}
+
+	/**
+	 * Count distinct ISPs that have at least one blocked IP.
+	 *
+	 * Iterates the JSON data looking for objects with 'isp' and blocked
+	 * status. Returns the number of unique ISP names with blocks.
+	 * When ISP info is not available, falls back to the simple IP map
+	 * and treats all blocked IPs as coming from a single ISP.
+	 *
+	 * @param array $json Decoded JSON data.
+	 * @return int Number of ISPs with blocked IPs.
+	 */
+	private function count_blocked_isps( $json ) {
+		$blocked_by_isp = array();
+
+		/* Find the data array */
+		$ips_data = null;
+		foreach ( array( 'ips', 'ip', 'data', 'results' ) as $key ) {
+			if ( isset( $json[ $key ] ) && is_array( $json[ $key ] ) ) {
+				$ips_data = $json[ $key ];
 				break;
 			}
 		}
 
-		return $result;
+		if ( ! is_array( $ips_data ) ) {
+			/*
+			 * Fallback: use extract_ip_map for simple structures without ISP info.
+			 * Without ISP data we treat all blocked IPs as 1 ISP (conservative).
+			 */
+			$ip_map  = $this->extract_ip_map( $json );
+			$has_any = false;
+			foreach ( $ip_map as $blocked ) {
+				if ( true === $blocked ) {
+					$has_any = true;
+					break;
+				}
+			}
+			return $has_any ? 1 : 0;
+		}
+
+		foreach ( $ips_data as $index => $entry ) {
+			if ( ! is_array( $entry ) || empty( $entry['ip'] ) ) {
+				continue;
+			}
+
+			$isp     = ! empty( $entry['isp'] ) ? strtolower( trim( $entry['isp'] ) ) : 'unknown';
+			$blocked = $this->extract_blocked_from_object( $entry );
+
+			if ( true === $blocked ) {
+				$blocked_by_isp[ $isp ] = true;
+			}
+		}
+
+		return count( $blocked_by_isp );
 	}
 
 	/**
