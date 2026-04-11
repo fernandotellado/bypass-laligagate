@@ -4,7 +4,7 @@ Tags: cloudflare, dns, futbol, bypass, proxy
 Requires at least: 5.6
 Tested up to: 6.9.4
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.1.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -93,6 +93,11 @@ No, solo con Cloudflare. Los DNS del dominio deben estar gestionados por Cloudfl
 
 == Registro de cambios ==
 
+= 1.1.1 =
+- Mejorado: los mensajes de estado del botón "Comprobar ahora" ahora usan colores según el contexto (rojo si hay bloqueos, ámbar en periodo de espera o forzado manual, verde si todo está bien)
+- Mejorado: el mensaje de forzar proxy OFF ahora se muestra en ámbar en vez de verde
+- Añadido: estilo de mensaje de aviso (warning) en la interfaz de administración
+
 = 1.1.0 =
 - Añadido: sección de opciones generales en la pantalla de ajustes
 - Añadido: filtrado por número mínimo de ISPs con bloqueos para evitar falsos positivos por problemas de red de un solo operador (configurable, por defecto 2)
@@ -101,11 +106,11 @@ No, solo con Cloudflare. Los DNS del dominio deben estar gestionados por Cloudfl
 - Corregido: sincronización de versión entre el plugin y el readme
 
 = 1.0.2 =
-- Corregido: las entradas de bloqueo huérfanas con más de 6 horas en el JSON de hayahora.futbol ahora se ignoran, evitando que el bypass se quede activo indefinidamente
-- Añadido: umbral de obsolescencia configurable mediante el filtro ayudawp_blg_stale_threshold (por defecto 6 horas)
+- Fixed: orphaned block entries older than 6 hours in hayahora.futbol JSON are now ignored, preventing the bypass from staying active indefinitely
+- Added: filterable staleness threshold via ayudawp_blg_stale_threshold (default 6 hours)
 
 = 1.0.1 =
-- Corregido: la detección de bloqueos ahora interpreta correctamente la estructura JSON de hayahora.futbol con arrays indexados numéricamente que contienen objetos IP con stateChanges
+- Fixed: block detection now correctly parses hayahora.futbol JSON structure with numerically-indexed arrays containing IP objects with stateChanges
 
 = 1.0.0 =
 - Versión inicial
