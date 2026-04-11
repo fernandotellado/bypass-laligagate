@@ -56,6 +56,9 @@ class AyudaWP_BLG_Admin_Page {
 		if ( empty( $s['cron_secret'] ) ) {
 			$s['cron_secret'] = wp_generate_password( 32, false, false );
 		}
+		$s['min_isps']            = isset( $input['min_isps'] ) ? max( 1, intval( $input['min_isps'] ) ) : $existing['min_isps'];
+		$s['email_notifications'] = ! empty( $input['email_notifications'] ) ? 1 : 0;
+		$s['delete_data']         = ! empty( $input['delete_data'] ) ? 1 : 0;
 		return $s;
 	}
 
@@ -82,7 +85,7 @@ class AyudaWP_BLG_Admin_Page {
 					<tr>
 						<th>Bloqueos activos</th>
 						<td id="blg-status-blocked"><span class="blg-badge <?php echo $is_blocked ? 'blg-badge-danger' : 'blg-badge-ok'; ?>"><?php echo $is_blocked ? 'SI' : 'NO'; ?></span></td>
-						<td class="blg-status-detail" id="blg-detail-blocked">
+						<td class="blg-status-detail">
 							<?php if ( $is_blocked ) : ?>
 								Hay partidos con bloqueos activos.
 							<?php elseif ( $has_checked ) : ?>
@@ -96,7 +99,7 @@ class AyudaWP_BLG_Admin_Page {
 					<tr>
 						<th>Bypass activo (proxy OFF)</th>
 						<td id="blg-status-bypass"><span class="blg-badge <?php echo $is_bypass ? 'blg-badge-warning' : 'blg-badge-ok'; ?>"><?php echo $is_bypass ? 'SI' : 'NO'; ?></span></td>
-						<td class="blg-status-detail" id="blg-detail-bypass">
+						<td class="blg-status-detail">
 							<?php if ( $is_manual ) : ?>
 								Forzado manualmente. Pulsa "Restaurar proxy ON" para devolver el control al cron.
 							<?php elseif ( $is_bypass ) : ?>
@@ -199,6 +202,31 @@ class AyudaWP_BLG_Admin_Page {
 									<code class="blg-code-block">*/15 * * * * curl -s "<?php echo esc_html( home_url( '/?bypass_blg_cron=1&token=' . $cfg['cron_secret'] ) ); ?>" > /dev/null 2>&1</code>
 									<p>Para regenerar el token, borra el campo y guarda.</p>
 								</div>
+							</td>
+						</tr>
+					</table>
+				</div>
+				<div class="ayudawp-blg-card">
+					<h2>Opciones generales</h2>
+					<table class="form-table">
+						<tr>
+							<th scope="row">ISPs mínimos para activar bypass</th>
+							<td>
+								<input type="number" name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[min_isps]" value="<?php echo intval( $cfg['min_isps'] ); ?>" min="1" class="small-text" />
+								<p class="description">Número mínimo de proveedores (ISPs) distintos con bloqueos activos para considerar que hay un bloqueo real de La Liga. Valor recomendado: 2. Con 1 se activa ante cualquier bloqueo, incluso si es un problema de red de un solo operador.</p>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row">Avisos por email</th>
+							<td>
+								<label><input type="checkbox" name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[email_notifications]" value="1" <?php checked( $cfg['email_notifications'], 1 ); ?> /> Enviar un email al administrador cuando el proxy se active o desactive automáticamente</label>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row">Borrado de datos</th>
+							<td>
+								<label><input type="checkbox" name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[delete_data]" value="1" <?php checked( $cfg['delete_data'], 1 ); ?> /> Eliminar todos los datos del plugin de la base de datos al borrar el plugin</label>
+								<p class="description">Si desmarcas esta opción, la configuración se conservará para una futura reinstalación.</p>
 							</td>
 						</tr>
 					</table>
