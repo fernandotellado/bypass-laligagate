@@ -23,7 +23,8 @@
 		el.textContent = msg;
 		el.className = 'ayudawp-blg-action-msg ayudawp-blg-action-msg--visible';
 		if ( type === 'success' ) { el.classList.add( 'blg-msg-success' ); }
-		else if ( type === 'error' ) { el.classList.add( 'blg-msg-error' ); }
+		else if ( type === 'warning' ) { el.classList.add( 'blg-msg-warning' ); }
+		else if ( type === 'error' || type === 'danger' ) { el.classList.add( 'blg-msg-error' ); }
 	}
 
 	function val( id ) {
@@ -56,25 +57,13 @@
 		var b = document.getElementById( 'blg-status-blocked' );
 		var p = document.getElementById( 'blg-status-bypass' );
 		var l = document.getElementById( 'blg-status-lastcheck' );
-		var db = document.getElementById( 'blg-detail-blocked' );
-		var dp = document.getElementById( 'blg-detail-bypass' );
 		if ( b && d.blocked !== undefined ) {
 			var isB = d.blocked === 'SI';
 			b.innerHTML = '<span class="blg-badge ' + ( isB ? 'blg-badge-danger' : 'blg-badge-ok' ) + '">' + ( isB ? 'SI' : 'NO' ) + '</span>';
-			if ( db ) {
-				var txt = isB ? 'Hay partidos con bloqueos activos.' : 'No se detectan bloqueos en este momento.';
-				db.innerHTML = txt + ' <a href="https://hayahora.futbol/" target="_blank" rel="noopener">Ver hayahora.futbol</a>';
-			}
 		}
 		if ( p && d.bypass !== undefined ) {
 			var isP = d.bypass === 'SI';
 			p.innerHTML = '<span class="blg-badge ' + ( isP ? 'blg-badge-warning' : 'blg-badge-ok' ) + '">' + ( isP ? 'SI' : 'NO' ) + '</span>';
-			if ( dp ) {
-				var bypassText = isP
-					? ( d.manual ? 'Forzado manualmente. Pulsa "Restaurar proxy ON" para devolver el control al cron.' : 'Activado automáticamente por detección de bloqueos.' )
-					: 'Proxy activo (CDN). Funcionamiento normal.';
-				dp.textContent = bypassText;
-			}
 		}
 		if ( l && d.lastCheck ) { l.textContent = d.lastCheck; }
 	}
@@ -103,7 +92,10 @@
 			showMsg( actionStatus, 'Comprobando...', '' );
 			ajaxPost( 'ayudawp_blg_check', false, function( r ) {
 				if ( r.success ) {
-					showMsg( actionStatus, r.data.message, 'success' );
+					var type = 'success';
+					if ( r.data.blocked === 'SI' ) { type = 'danger'; }
+					else if ( r.data.bypass === 'SI' ) { type = 'warning'; }
+					showMsg( actionStatus, r.data.message, type );
 					updateStatus( r.data );
 				} else {
 					showMsg( actionStatus, ( r.data && r.data.message ) || 'Error', 'error' );
@@ -121,8 +113,8 @@
 			ajaxPost( 'ayudawp_blg_proxy_off', false, function( r ) {
 				if ( r.success ) {
 					var hasErr = r.data.message && r.data.message.indexOf( 'Error' ) !== -1;
-					showMsg( actionStatus, r.data.message, hasErr ? 'error' : 'success' );
-					updateStatus( { bypass: r.data.bypass || 'SI', manual: true } );
+					showMsg( actionStatus, r.data.message, hasErr ? 'error' : 'warning' );
+					updateStatus( { bypass: r.data.bypass || 'SI' } );
 					if ( r.data.html ) { refreshDns( r.data.html ); }
 				} else {
 					showMsg( actionStatus, ( r.data && r.data.message ) || 'Error', 'error' );
@@ -141,7 +133,7 @@
 				if ( r.success ) {
 					var hasErr = r.data.message && r.data.message.indexOf( 'Error' ) !== -1;
 					showMsg( actionStatus, r.data.message, hasErr ? 'error' : 'success' );
-					updateStatus( { bypass: r.data.bypass || 'NO', manual: false } );
+					updateStatus( { bypass: r.data.bypass || 'NO' } );
 					if ( r.data.html ) { refreshDns( r.data.html ); }
 				} else {
 					showMsg( actionStatus, ( r.data && r.data.message ) || 'Error', 'error' );
