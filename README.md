@@ -134,6 +134,9 @@ Si fuerzas el proxy OFF manualmente, el cron automático **no lo cambiará** has
 
 ## Registro de cambios
 
+### 1.1.2
+- Mejorado: cambio de ISPs por defecto de 2 a 1 para que sea el usuario quien decida su umbral de riesgo, siendo por defecto el mínimo posible.
+
 ### 1.1.1
 - Mejorado: los mensajes de estado del botón "Comprobar ahora" ahora usan colores según el contexto (rojo si hay bloqueos, ámbar en periodo de espera o forzado manual, verde si todo está bien)
 - Mejorado: el mensaje de forzar proxy OFF ahora se muestra en ámbar en vez de verde

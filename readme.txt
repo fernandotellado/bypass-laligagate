@@ -1,10 +1,10 @@
 === Bypass LaLigaGate ===
 Contributors: fernandot, ayudawp
-Tags: cloudflare, dns, futbol, bypass, proxy
+Tags: cloudflare, dns, futbol, liga, proxy
 Requires at least: 5.6
-Tested up to: 6.9.4
+Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.1.1
+Stable tag: 1.1.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -92,6 +92,9 @@ Sí, por defecto envía un email al administrador del sitio cuando el proxy se d
 No, solo con Cloudflare. Los DNS del dominio deben estar gestionados por Cloudflare.
 
 == Registro de cambios ==
+
+= 1.1.2 =
+- Mejorado: cambio de ISPs por defecto de 2 a 1 para que sea el usuario quien decida su umbral de riesgo, siendo por defecto el mínimo posible.
 
 = 1.1.1 =
 - Mejorado: los mensajes de estado del botón "Comprobar ahora" ahora usan colores según el contexto (rojo si hay bloqueos, ámbar en periodo de espera o forzado manual, verde si todo está bien)

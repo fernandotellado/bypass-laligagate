@@ -35,7 +35,7 @@ class AyudaWP_BLG_Block_Checker {
 	 * @param int $min_isps Minimum ISPs with blocks to trigger (default 2).
 	 * @return array{blocked: bool, last_update: string, error: string, blocked_isps: int}
 	 */
-	public function check_status( $min_isps = 2 ) {
+	public function check_status( $min_isps = 1 ) {
 		$result = array(
 			'blocked'      => false,
 			'last_update'  => '',
