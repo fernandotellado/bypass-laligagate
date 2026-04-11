@@ -4,7 +4,7 @@ Tags: cloudflare, dns, futbol, bypass, proxy
 Requires at least: 5.6
 Tested up to: 6.9.4
 Requires PHP: 7.4
-Stable tag: 1.0.2
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -24,7 +24,8 @@ Funciona en modo preventivo: no espera a que tu dominio concreto sea bloqueado, 
 - Modo preventivo: actúa ante cualquier bloqueo activo
 - Periodo de espera configurable para evitar cambios rápidos de estado
 - Control manual: botones para forzar proxy OFF y restaurar proxy ON
-- Notificaciones por email al administrador cuando el proxy se desactiva o reactiva automáticamente
+- Notificaciones por email al administrador cuando el proxy se desactiva o reactiva automáticamente (desactivable)
+- Filtrado inteligente por ISPs: solo actúa cuando hay bloqueos en varios proveedores, evitando falsos positivos
 - Soporte para Global API Key y API Token de Cloudflare
 - Endpoint para cron externo con token de seguridad
 - Al desactivar el plugin se restaura el proxy automáticamente
@@ -85,19 +86,26 @@ Al desactivar el plugin se restaura automáticamente el proxy (Proxied/CDN) en t
 Sí. Hay botones para forzar el proxy OFF o restaurarlo ON. Al forzar manualmente, el cron automático no lo cambiará hasta que tú restaures el proxy.
 
 = ¿Me avisa cuando cambia el estado? =
-Sí. Envía un email al administrador del sitio cuando el proxy se desactiva automáticamente por bloqueos y otro cuando se reactiva.
+Sí, por defecto envía un email al administrador del sitio cuando el proxy se desactiva automáticamente por bloqueos y otro cuando se reactiva. Puedes desactivar estos avisos en la sección de opciones generales.
 
 = ¿Funciona con cualquier proveedor de DNS? =
 No, solo con Cloudflare. Los DNS del dominio deben estar gestionados por Cloudflare.
 
 == Registro de cambios ==
 
+= 1.1.0 =
+- Añadido: sección de opciones generales en la pantalla de ajustes
+- Añadido: filtrado por número mínimo de ISPs con bloqueos para evitar falsos positivos por problemas de red de un solo operador (configurable, por defecto 2)
+- Añadido: opción para activar o desactivar los avisos por email (activa por defecto)
+- Añadido: opción para conservar los datos del plugin al borrarlo, para futuras reinstalaciones (borrado activo por defecto)
+- Corregido: sincronización de versión entre el plugin y el readme
+
 = 1.0.2 =
-- Fixed: orphaned block entries older than 6 hours in hayahora.futbol JSON are now ignored, preventing the bypass from staying active indefinitely
-- Added: filterable staleness threshold via ayudawp_blg_stale_threshold (default 6 hours)
+- Corregido: las entradas de bloqueo huérfanas con más de 6 horas en el JSON de hayahora.futbol ahora se ignoran, evitando que el bypass se quede activo indefinidamente
+- Añadido: umbral de obsolescencia configurable mediante el filtro ayudawp_blg_stale_threshold (por defecto 6 horas)
 
 = 1.0.1 =
-- Fixed: block detection now correctly parses hayahora.futbol JSON structure with numerically-indexed arrays containing IP objects with stateChanges
+- Corregido: la detección de bloqueos ahora interpreta correctamente la estructura JSON de hayahora.futbol con arrays indexados numéricamente que contienen objetos IP con stateChanges
 
 = 1.0.0 =
 - Versión inicial
