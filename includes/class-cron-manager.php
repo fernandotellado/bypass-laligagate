@@ -41,7 +41,7 @@ class AyudaWP_BLG_Cron_Manager {
 		}
 
 		$checker = new AyudaWP_BLG_Block_Checker();
-		$status  = $checker->check_status();
+		$status  = $checker->check_status( intval( $cfg['min_isps'] ) );
 
 		$state['last_check'] = current_time( 'mysql' );
 
@@ -108,11 +108,13 @@ class AyudaWP_BLG_Cron_Manager {
 		ayudawp_blg_save_state( $state );
 
 		/* Send email notifications on state changes */
-		$notifier = new AyudaWP_BLG_Email_Notifier();
-		if ( $state_changed_to_active ) {
-			$notifier->notify_proxy_disabled();
-		} elseif ( $state_changed_to_inactive ) {
-			$notifier->notify_proxy_restored();
+		if ( ! empty( $cfg['email_notifications'] ) ) {
+			$notifier = new AyudaWP_BLG_Email_Notifier();
+			if ( $state_changed_to_active ) {
+				$notifier->notify_proxy_disabled();
+			} elseif ( $state_changed_to_inactive ) {
+				$notifier->notify_proxy_restored();
+			}
 		}
 	}
 
