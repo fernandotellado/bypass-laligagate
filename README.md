@@ -134,6 +134,11 @@ Si fuerzas el proxy OFF manualmente, el cron automático **no lo cambiará** has
 
 ## Registro de cambios
 
+### 1.1.1
+- Mejorado: los mensajes de estado del botón "Comprobar ahora" ahora usan colores según el contexto (rojo si hay bloqueos, ámbar en periodo de espera o forzado manual, verde si todo está bien)
+- Mejorado: el mensaje de forzar proxy OFF ahora se muestra en ámbar en vez de verde
+- Añadido: estilo de mensaje de aviso (warning) en la interfaz de administración
+
 ### 1.1.0
 - Añadido: sección de opciones generales en la pantalla de ajustes
 - Añadido: filtrado por número mínimo de ISPs con bloqueos para evitar falsos positivos por problemas de red de un solo operador (configurable, por defecto 2)
