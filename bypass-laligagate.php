@@ -3,7 +3,7 @@
  * Plugin Name: Bypass LaLigaGate
  * Plugin URI: https://mantenimiento.ayudawp.com
  * Description: Gestiona automáticamente el proxy de Cloudflare durante los bloqueos de IP por partidos de fútbol en España, alternando entre Proxied (CDN) y DNS Only.
- * Version: 1.0.2
+ * Version: 1.1.0
  * Author: Mantenimiento WordPress
  * Author URI: https://mantenimiento.ayudawp.com
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'AYUDAWP_BLG_VERSION', '1.0.2' );
+define( 'AYUDAWP_BLG_VERSION', '1.1.0' );
 define( 'AYUDAWP_BLG_FILE', __FILE__ );
 define( 'AYUDAWP_BLG_DIR', plugin_dir_path( __FILE__ ) );
 define( 'AYUDAWP_BLG_URL', plugin_dir_url( __FILE__ ) );
@@ -110,14 +110,17 @@ add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), 'ayudawp_blg_p
 /* ---- Helpers: configuracion ---- */
 function ayudawp_blg_default_config() {
 	return array(
-		'auth_type'        => 'global',
-		'cf_email'         => '',
-		'cf_api_key'       => '',
-		'cf_zone_id'       => '',
-		'check_interval'   => 15,
-		'cooldown'         => 60,
-		'selected_records' => array(),
-		'cron_secret'      => wp_generate_password( 32, false, false ),
+		'auth_type'           => 'global',
+		'cf_email'            => '',
+		'cf_api_key'          => '',
+		'cf_zone_id'          => '',
+		'check_interval'      => 15,
+		'cooldown'            => 60,
+		'selected_records'    => array(),
+		'cron_secret'         => wp_generate_password( 32, false, false ),
+		'min_isps'            => 2,
+		'email_notifications' => 1,
+		'delete_data'         => 1,
 	);
 }
 
