@@ -12,18 +12,20 @@ Si tu web está detrás del proxy de Cloudflare (la nubecita naranja), puede que
 
 El plugin consulta [hayahora.futbol](https://hayahora.futbol/) cada X minutos (configurable). Si detecta bloqueos activos desactiva el proxy de Cloudflare en los registros DNS que hayas elegido, pasando de **Proxied (CDN)** a **DNS Only**. Cuando terminan los bloqueos y pasa un periodo de espera (también configurable), reactiva el proxy automáticamente. También tiene botones de activación y desactivación manual del proxy.
 
-La desactivación automática del proxy funciona en **modo preventivo**: no espera a que bloqueen tu dominio concreto, actúa en cuanto detecta que hay bloqueos activos en general, más seguro y menos consultas externas y al cron.
+La desactivación automática del proxy funciona en **modo preventivo**: no espera a que bloqueen tu dominio concreto, actúa en cuanto detecta bloqueos activos en varios proveedores (ISPs). El número mínimo de ISPs es configurable para evitar falsos positivos por problemas de red de un solo operador.
 
 ## Qué hace
 
 - Monitorización automática cada 5-60 minutos (configurable)
 - Desactiva el proxy al detectar bloqueos, lo reactiva cuando pasan
+- Filtrado inteligente por ISPs: solo actúa cuando hay bloqueos en varios proveedores, evitando falsos positivos por problemas de red de un solo operador (configurable)
 - Periodo de espera configurable para evitar cambios rápidos de estado
 - Botones manuales para forzar proxy OFF o restaurar ON
-- Email al administrador cuando el proxy se desactiva o reactiva automáticamente
+- Email al administrador cuando el proxy se desactiva o reactiva automáticamente (desactivable)
 - Soporte para Global API Key y API Token de Cloudflare
 - Endpoint para cron externo con token de seguridad (opcional)
 - Al desactivar el plugin se restaura el proxy automáticamente
+- Opción para conservar los datos del plugin al borrarlo (borrado activo por defecto)
 
 ## Estructura
 
@@ -40,7 +42,7 @@ bypass-laligagate/
 ├── assets/
 │   ├── css/admin.css                # Estilos de la página de ajustes
 │   └── js/admin.js                  # JavaScript para AJAX y UI
-├── uninstall.php                    # Limpieza al borrar el plugin
+├── uninstall.php                    # Limpieza al borrar el plugin (condicional)
 └── readme.txt                       # Readme para WordPress.org
 ```
 
@@ -90,14 +92,22 @@ Está en el dashboard de Cloudflare de tu dominio, panel derecho de la vista gen
 - **Intervalo de comprobación**: cada cuántos minutos consulta hayahora.futbol (por defecto 15)
 - **Periodo de espera**: minutos que espera antes de reactivar el proxy después de que los bloqueos terminen (por defecto 60)
 
+### Opciones generales
+
+- **ISPs mínimos para activar bypass**: número mínimo de proveedores distintos con bloqueos activos para considerar que hay un bloqueo real. Con el valor por defecto (2) se evitan falsos positivos por problemas de red de un solo operador (por ejemplo, MásMóvil cortando IPs de AWS/Akamai sin que sea un bloqueo de La Liga)
+- **Avisos por email**: activa o desactiva los emails al administrador cuando el proxy cambia de estado automáticamente (activo por defecto)
+- **Borrado de datos**: si está marcado, al borrar el plugin se eliminan todas las opciones de la base de datos. Si lo desmarcas, la configuración se conserva para una futura reinstalación (activo por defecto)
+
 ## Cómo funciona
 
 ```
 hayahora.futbol dice que hay bloqueos
         ↓
+¿Bloqueos en X o más ISPs distintos? (configurable, por defecto 2)
+        ↓ SÍ
 Plugin desactiva proxy (DNS Only) en los registros seleccionados
         ↓
-Email al admin: "Proxy desactivado por bloqueos de La Liga"
+Email al admin: "Proxy desactivado por bloqueos de La Liga" (si está activado)
         ↓
     [pasan los bloqueos]
         ↓
@@ -105,7 +115,7 @@ Email al admin: "Proxy desactivado por bloqueos de La Liga"
         ↓
 Plugin reactiva proxy (CDN)
         ↓
-Email al admin: "Proxy reactivado"
+Email al admin: "Proxy reactivado" (si está activado)
 ```
 
 Si fuerzas el proxy OFF manualmente, el cron automático **no lo cambiará** hasta que pulses "Restaurar proxy ON". Así puedes intervenir sin que el automatismo te lo deshaga.
@@ -124,9 +134,16 @@ Si fuerzas el proxy OFF manualmente, el cron automático **no lo cambiará** has
 
 ## Registro de cambios
 
+### 1.1.0
+- Añadido: sección de opciones generales en la pantalla de ajustes
+- Añadido: filtrado por número mínimo de ISPs con bloqueos para evitar falsos positivos por problemas de red de un solo operador (configurable, por defecto 2)
+- Añadido: opción para activar o desactivar los avisos por email (activa por defecto)
+- Añadido: opción para conservar los datos del plugin al borrarlo, para futuras reinstalaciones (borrado activo por defecto)
+- Corregido: sincronización de versión entre el plugin y el readme
+
 ### 1.0.2
 - Corregido: ahora se ignoran los registros de más de 6 horas en hayahora.futbol JSON, evitando así que el bypass permanezca activo indefinidamente
-- Añadido: umbral filtrable mediante `ayudawp_blg_stale_threshold` (por defedto 6)
+- Añadido: umbral filtrable mediante `ayudawp_blg_stale_threshold` (por defecto 6 horas)
 
 ### 1.0.1
 - Corregido: la detección de bloqueos ahora analiza correctamente la estructura del JSON de hayahora.futbol con arrays indexados numéricamente que contengan objetos de IPs con cambios de estado
