@@ -41,6 +41,9 @@ Funciona en modo preventivo: no espera a que tu dominio concreto sea bloqueado, 
 7. Ajusta el intervalo de comprobación y el periodo de espera
 8. Pulsa "Guardar cambios"
 
+***Nota importante:***
+Si tienes más instalaciones de WordPress en un mismo dominio (p.ej., tudominio.com/blog/ o blog.tudominio.com) no hace falta instalar el plugin en cada WordPress, solo tienes que instalarlo y configurarlo en la instalación del dominio principal (tudominio.com). En el caso de los subdominios deben estar añadidos en los registros DNS de Cloudflare, y así podrás también añadirlos a los ajustes del plugin para que se active o desactive el proxy cuando haya bloqueos.
+
 = Obtener credenciales de Cloudflare =
 
 **Global API Key (más sencillo):**

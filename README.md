@@ -59,6 +59,9 @@ Los datos del plugin se almacenan en tres opciones independientes de `wp_options
 3. Activa el plugin en el escritorio de WordPress
 4. Ve a **Herramientas > Bypass LaLigaGate**
 
+### Nota importante
+Si tienes más instalaciones de WordPress en un mismo dominio (p.ej., tudominio.com/blog/ o blog.tudominio.com) no hace falta instalar el plugin en cada WordPress, solo tienes que instalarlo y configurarlo en la instalación del dominio principal (tudominio.com). En el caso de los subdominios deben estar añadidos en los registros DNS de Cloudflare, y así podrás también añadirlos a los ajustes del plugin para que se active o desactive el proxy cuando haya bloqueos.
+
 ## Configuración
 
 ### Credenciales de Cloudflare

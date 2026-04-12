@@ -53,7 +53,7 @@ class AyudaWP_BLG_Email_Notifier {
 		$subject = '[' . $site . '] Proxy de Cloudflare reactivado';
 
 		$body  = "Hola,\n\n";
-		$body .= "Los bloqueos de La Liga han terminado y el periodo de espera ha finalizado. El proxy de Cloudflare se ha reactivado automáticamente.\n\n";
+		$body .= "Ahora mismo no hay bloqueos de IPs por parte de La Liga. El proxy de Cloudflare se ha reactivado automáticamente.\n\n";
 		$body .= "Sitio: {$site}\n";
 		$body .= "URL: {$url}\n";
 		$body .= "Estado: Proxy ON (CDN)\n\n";
