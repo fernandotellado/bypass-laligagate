@@ -51,6 +51,11 @@
 .blg-proxy-on { color: #00a32a; font-weight: 600; }
 .blg-proxy-off { color: #d63638; font-weight: 600; }
 
+.blg-status-note { color: #787c82; font-size: 12px; margin-left: 4px; }
+.blg-cron-badge { margin-left: 8px; vertical-align: middle; }
+.ayudawp-blg-cron-warning { margin: 16px 0 0; }
+.blg-row-highlight th, .blg-row-highlight td { background: #fff8e1; }
+
 .ayudawp-blg-footer { margin-top: 20px; color: #999; font-size: 12px; }
 .ayudawp-blg-footer a { color: #999; }
 .ayudawp-blg-wrap .button[disabled] { opacity: 0.6; cursor: not-allowed; }

@@ -3,7 +3,7 @@
  * Plugin Name: Bypass LaLigaGate
  * Plugin URI: https://mantenimiento.ayudawp.com
  * Description: Gestiona automáticamente el proxy de Cloudflare durante los bloqueos de IP por partidos de fútbol en España, alternando entre Proxied (CDN) y DNS Only.
- * Version: 1.1.2
+ * Version: 1.2.0
  * Author: Mantenimiento WordPress
  * Author URI: https://mantenimiento.ayudawp.com
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'AYUDAWP_BLG_VERSION', '1.1.2' );
+define( 'AYUDAWP_BLG_VERSION', '1.2.0' );
 define( 'AYUDAWP_BLG_FILE', __FILE__ );
 define( 'AYUDAWP_BLG_DIR', plugin_dir_path( __FILE__ ) );
 define( 'AYUDAWP_BLG_URL', plugin_dir_url( __FILE__ ) );
@@ -137,8 +137,10 @@ function ayudawp_blg_default_state() {
 	return array(
 		'bypass_active'   => 0,
 		'bypass_since'    => 0,
+		'blocks_ended_at' => 0,
 		'manual_override' => 0,
 		'last_check'      => '',
+		'last_check_ts'   => 0,
 		'last_status'     => 'NO',
 	);
 }
@@ -169,4 +171,52 @@ function ayudawp_blg_find_record( $records, $record_id ) {
 		}
 	}
 	return null;
+}
+
+/* ---- Helpers: diagnostico del cron ---- */
+/**
+ * Build a diagnostic snapshot of the recurring cron, used by the admin UI and
+ * the AJAX handler. Centralised so staleness is computed the same way
+ * everywhere.
+ *
+ * Keys:
+ *   next_ts           unix ts of next scheduled run (0 if not scheduled)
+ *   next_human        human-readable date (or empty)
+ *   last_check_ts     unix ts of last successful run (0 if never)
+ *   seconds_since     elapsed seconds since last_check_ts (0 if never)
+ *   interval_secs     configured interval in seconds
+ *   scheduled         whether the event is scheduled at all
+ *   stale             last check older than 2x interval (bool)
+ *   overdue           next run is in the past by more than 5 min (bool)
+ *   unhealthy         scheduled==false || stale || overdue
+ */
+function ayudawp_blg_get_cron_diagnostics() {
+	$cfg            = ayudawp_blg_get_config();
+	$state          = ayudawp_blg_get_state();
+	$interval_secs  = max( 5, min( 60, intval( $cfg['check_interval'] ) ) ) * MINUTE_IN_SECONDS;
+	$next_ts        = wp_next_scheduled( AYUDAWP_BLG_CRON_HOOK );
+	$next_ts        = $next_ts ? intval( $next_ts ) : 0;
+	$last_check_ts  = intval( $state['last_check_ts'] );
+	$now            = time();
+	$seconds_since  = $last_check_ts > 0 ? max( 0, $now - $last_check_ts ) : 0;
+	$scheduled      = $next_ts > 0;
+	$stale          = $last_check_ts > 0 && $seconds_since > ( 2 * $interval_secs );
+	$overdue        = $scheduled && ( $now - $next_ts ) > ( 5 * MINUTE_IN_SECONDS );
+
+	$next_human = '';
+	if ( $scheduled ) {
+		$next_human = wp_date( 'Y-m-d H:i:s', $next_ts );
+	}
+
+	return array(
+		'next_ts'       => $next_ts,
+		'next_human'    => $next_human,
+		'last_check_ts' => $last_check_ts,
+		'seconds_since' => $seconds_since,
+		'interval_secs' => $interval_secs,
+		'scheduled'     => $scheduled,
+		'stale'         => $stale,
+		'overdue'       => $overdue,
+		'unhealthy'     => ( ! $scheduled ) || $stale || $overdue,
+	);
 }

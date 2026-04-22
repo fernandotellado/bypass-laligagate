@@ -161,6 +161,7 @@ class AyudaWP_BLG_Ajax_Handler {
 
 		$state = ayudawp_blg_get_state();
 		$cfg   = ayudawp_blg_get_config();
+		$diag  = ayudawp_blg_get_cron_diagnostics();
 
 		$msg = '';
 		if ( ! empty( $state['manual_override'] ) ) {
@@ -170,8 +171,8 @@ class AyudaWP_BLG_Ajax_Handler {
 			$msg .= 'Hay bloqueos activos ahora mismo.';
 		} else {
 			$msg .= 'No hay bloqueos activos.';
-			if ( ! empty( $state['bypass_active'] ) && empty( $state['manual_override'] ) && $state['bypass_since'] > 0 ) {
-				$remaining = max( 0, ( intval( $cfg['cooldown'] ) * 60 ) - ( time() - intval( $state['bypass_since'] ) ) );
+			if ( ! empty( $state['bypass_active'] ) && empty( $state['manual_override'] ) && intval( $state['blocks_ended_at'] ) > 0 ) {
+				$remaining = max( 0, ( intval( $cfg['cooldown'] ) * 60 ) - ( time() - intval( $state['blocks_ended_at'] ) ) );
 				if ( $remaining > 0 ) {
 					$msg .= ' Periodo de espera: ' . ceil( $remaining / 60 ) . ' min.';
 				}
@@ -185,6 +186,7 @@ class AyudaWP_BLG_Ajax_Handler {
 			'blocked'   => $state['last_status'],
 			'bypass'    => $is_bypass ? 'SI' : 'NO',
 			'lastCheck' => $state['last_check'],
+			'nextCheck' => $diag['next_human'],
 		) );
 	}
 

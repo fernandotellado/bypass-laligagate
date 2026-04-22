@@ -4,7 +4,7 @@ Tags: cloudflare, dns, futbol, liga, proxy
 Requires at least: 5.6
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.1.2
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -95,6 +95,13 @@ Sí, por defecto envía un email al administrador del sitio cuando el proxy se d
 No, solo con Cloudflare. Los DNS del dominio deben estar gestionados por Cloudflare.
 
 == Registro de cambios ==
+
+= 1.2.0 =
+- Corregido: el periodo de espera tras los bloqueos ahora se mide desde que terminan los bloqueos, no desde que empezó el bypass. Antes, si los bloqueos duraban más que el propio periodo de espera, el proxy se reactivaba sin ningún margen.
+- Añadido: watchdog que reprograma la comprobación automática si por cualquier motivo desaparece del cron de WordPress, sin tener que desactivar y reactivar el plugin.
+- Añadido: fila "Próxima comprobación" en la tarjeta de estado para saber cuándo está previsto el siguiente ciclo automático.
+- Añadido: aviso en la página de ajustes cuando se detecta que WP-Cron lleva retraso (más de 2× el intervalo configurado), con recomendación de usar el cron externo del servidor. Solo se muestra si hay retraso real, así la interfaz normal no cambia.
+- Mejorado: el ejemplo de crontab usa el intervalo configurado en lugar de un valor fijo.
 
 = 1.1.2 =
 - Mejorado: cambio de ISPs por defecto de 2 a 1 para que sea el usuario quien decida su umbral de riesgo, siendo por defecto el mínimo posible.

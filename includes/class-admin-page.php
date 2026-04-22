@@ -69,15 +69,32 @@ class AyudaWP_BLG_Admin_Page {
 		$cfg   = ayudawp_blg_get_config();
 		$state = ayudawp_blg_get_state();
 		$dns   = ayudawp_blg_get_dns_cache();
+		$diag  = ayudawp_blg_get_cron_diagnostics();
 
-		$is_blocked = 'SI' === $state['last_status'];
-		$is_manual  = ! empty( $state['manual_override'] );
-		$is_bypass  = ! empty( $state['bypass_active'] ) || $is_manual;
+		$is_blocked  = 'SI' === $state['last_status'];
+		$is_manual   = ! empty( $state['manual_override'] );
+		$is_bypass   = ! empty( $state['bypass_active'] ) || $is_manual;
 		$has_checked = ! empty( $state['last_check'] );
+
+		$cron_url = home_url( '/?bypass_blg_cron=1&token=' . $cfg['cron_secret'] );
 		?>
 		<div class="wrap ayudawp-blg-wrap">
 			<h1>Bypass LaLigaGate <small>v<?php echo esc_html( AYUDAWP_BLG_VERSION ); ?></small></h1>
 			<p class="description">Gestiona el proxy de Cloudflare automáticamente durante los bloqueos de IP por partidos de fútbol en España.</p>
+
+			<?php if ( $diag['unhealthy'] && $has_checked ) : ?>
+				<div class="notice notice-warning ayudawp-blg-cron-warning">
+					<p><strong>La comprobación automática se está retrasando.</strong>
+					<?php if ( ! $diag['scheduled'] ) : ?>
+						No hay ninguna comprobación programada. Visita de nuevo esta página o guarda los ajustes para reprogramarla.
+					<?php elseif ( $diag['stale'] ) : ?>
+						La última comprobación fue hace <?php echo esc_html( human_time_diff( $diag['last_check_ts'], time() ) ); ?> (intervalo configurado: <?php echo intval( $cfg['check_interval'] ); ?> min).
+					<?php else : ?>
+						La próxima comprobación debería haberse ejecutado ya.
+					<?php endif; ?>
+					WP-Cron solo se dispara con visitas al sitio. Si tu web tiene poco tráfico usa el <strong>cron externo</strong> que aparece más abajo para ejecutar la comprobación desde el servidor.</p>
+				</div>
+			<?php endif; ?>
 
 			<div class="ayudawp-blg-card ayudawp-blg-card--status">
 				<h2>Estado actual</h2>
@@ -111,7 +128,23 @@ class AyudaWP_BLG_Admin_Page {
 					</tr>
 					<tr>
 						<th>Última comprobación</th>
-						<td id="blg-status-lastcheck" colspan="2"><?php echo esc_html( $has_checked ? $state['last_check'] : 'Pendiente' ); ?></td>
+						<td id="blg-status-lastcheck" colspan="2">
+							<?php echo esc_html( $has_checked ? $state['last_check'] : 'Pendiente' ); ?>
+							<?php if ( $has_checked && $diag['stale'] ) : ?>
+								<span class="blg-badge blg-badge-warning blg-cron-badge" title="La comprobación debería haberse ejecutado antes.">retrasada</span>
+							<?php endif; ?>
+						</td>
+					</tr>
+					<tr>
+						<th>Próxima comprobación</th>
+						<td id="blg-status-nextcheck" colspan="2">
+							<?php if ( $diag['scheduled'] ) : ?>
+								<?php echo esc_html( $diag['next_human'] ); ?>
+								<span class="blg-status-note">(cada <?php echo intval( $cfg['check_interval'] ); ?> min por WP-Cron)</span>
+							<?php else : ?>
+								<em>No programada</em>
+							<?php endif; ?>
+						</td>
 					</tr>
 				</table>
 				<div class="ayudawp-blg-manual-actions">
@@ -191,15 +224,15 @@ class AyudaWP_BLG_Admin_Page {
 							<th scope="row">Periodo de espera tras desactivar</th>
 							<td><input type="number" name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[cooldown]" value="<?php echo intval( $cfg['cooldown'] ); ?>" min="5" max="600" class="small-text" /> minutos<p class="description">Espera antes de reactivar el proxy tras terminar los bloqueos (5-600 min).</p></td>
 						</tr>
-						<tr>
-							<th scope="row">Cron externo (opcional)</th>
+						<tr<?php echo $diag['unhealthy'] && $has_checked ? ' class="blg-row-highlight"' : ''; ?>>
+							<th scope="row">Cron externo (opcional)<?php if ( $diag['unhealthy'] && $has_checked ) : ?><br /><span class="blg-badge blg-badge-warning">recomendado</span><?php endif; ?></th>
 							<td>
 								<input type="text" name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[cron_secret]" value="<?php echo esc_attr( $cfg['cron_secret'] ); ?>" class="regular-text" autocomplete="off" />
 								<div class="blg-help-box">
 									<p>Si quieres usar un cron real del servidor en vez de WP-Cron, configura esta URL:</p>
-									<code class="blg-code-block"><?php echo esc_html( home_url( '/?bypass_blg_cron=1&token=' . $cfg['cron_secret'] ) ); ?></code>
-									<p>Ejemplo para crontab:</p>
-									<code class="blg-code-block">*/15 * * * * curl -s "<?php echo esc_html( home_url( '/?bypass_blg_cron=1&token=' . $cfg['cron_secret'] ) ); ?>" > /dev/null 2>&1</code>
+									<code class="blg-code-block"><?php echo esc_html( $cron_url ); ?></code>
+									<p>Ejemplo para crontab (cada <?php echo intval( $cfg['check_interval'] ); ?> min):</p>
+									<code class="blg-code-block">*/<?php echo intval( $cfg['check_interval'] ); ?> * * * * curl -s "<?php echo esc_html( $cron_url ); ?>" > /dev/null 2>&1</code>
 									<p>Para regenerar el token, borra el campo y guarda.</p>
 								</div>
 							</td>

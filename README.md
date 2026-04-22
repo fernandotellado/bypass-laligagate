@@ -137,6 +137,12 @@ Si fuerzas el proxy OFF manualmente, el cron automático **no lo cambiará** has
 
 ## Registro de cambios
 
+### 1.2.0
+- Corregido: el periodo de espera tras los bloqueos se mide ahora desde que terminan los bloqueos, no desde que empezó el bypass. Antes, si los bloqueos duraban más que el periodo de espera, el proxy se reactivaba sin ningún margen real.
+- Añadido: watchdog que reprograma la comprobación automática si por cualquier motivo desaparece del cron de WordPress.
+- Añadido: fila "Próxima comprobación" en la tarjeta de estado y aviso condicional cuando WP-Cron lleva retraso, con recomendación del cron externo del servidor. El aviso solo aparece si hay retraso real, manteniendo la interfaz limpia en funcionamiento normal.
+- Mejorado: el ejemplo de crontab usa el intervalo configurado en lugar de un valor fijo.
+
 ### 1.1.2
 - Mejorado: cambio de ISPs por defecto de 2 a 1 para que sea el usuario quien decida su umbral de riesgo, siendo por defecto el mínimo posible.
 
