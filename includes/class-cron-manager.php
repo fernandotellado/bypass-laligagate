@@ -15,7 +15,24 @@ class AyudaWP_BLG_Cron_Manager {
 		add_filter( 'cron_schedules', array( $this, 'add_custom_interval' ) );
 		add_action( AYUDAWP_BLG_CRON_HOOK, array( $this, 'run_check' ) );
 		add_action( 'init', array( $this, 'maybe_process_external_cron' ) );
+		add_action( 'init', array( $this, 'ensure_scheduled' ) );
 		add_action( 'update_option_' . AYUDAWP_BLG_OPT_CONFIG, array( $this, 'maybe_reschedule' ), 10, 2 );
+	}
+
+	/**
+	 * Watchdog: re-schedule the recurring event if it went missing.
+	 *
+	 * The plugin's activation hook only runs on explicit activate, so if the
+	 * event ever gets unscheduled (a manual wp cron event delete, a broken
+	 * update, another plugin clearing crons…) it would stay gone forever.
+	 * This check is cheap and idempotent: wp_next_scheduled() short-circuits
+	 * when the event already exists.
+	 */
+	public function ensure_scheduled() {
+		if ( wp_next_scheduled( AYUDAWP_BLG_CRON_HOOK ) ) {
+			return;
+		}
+		wp_schedule_event( time() + 60, 'ayudawp_blg_interval', AYUDAWP_BLG_CRON_HOOK );
 	}
 
 	public function add_custom_interval( $schedules ) {
@@ -43,7 +60,9 @@ class AyudaWP_BLG_Cron_Manager {
 		$checker = new AyudaWP_BLG_Block_Checker();
 		$status  = $checker->check_status( intval( $cfg['min_isps'] ) );
 
-		$state['last_check'] = current_time( 'mysql' );
+		$now                    = time();
+		$state['last_check']    = current_time( 'mysql' );
+		$state['last_check_ts'] = $now;
 
 		if ( ! empty( $status['error'] ) ) {
 			ayudawp_blg_save_state( $state );
@@ -59,17 +78,29 @@ class AyudaWP_BLG_Cron_Manager {
 			return;
 		}
 
-		/* Automatic logic */
-		$was_active    = ! empty( $state['bypass_active'] );
-		$bypass_since  = intval( $state['bypass_since'] );
-		$cooldown_secs = max( 5, intval( $cfg['cooldown'] ) ) * MINUTE_IN_SECONDS;
-		$now           = time();
+		/*
+		 * Cooldown is measured from the moment the blocks ended, not from
+		 * when the bypass started. Otherwise, if a block period lasts longer
+		 * than the configured cooldown, the proxy would restore instantly
+		 * when the match ends, leaving no grace window at all.
+		 */
+		$was_active      = ! empty( $state['bypass_active'] );
+		$blocks_ended_at = intval( $state['blocks_ended_at'] );
+		$cooldown_secs   = max( 5, intval( $cfg['cooldown'] ) ) * MINUTE_IN_SECONDS;
 
 		$should_disable = false;
 		if ( $blocks_active ) {
 			$should_disable = true;
-		} elseif ( $was_active && $bypass_since > 0 && ( $now - $bypass_since ) < $cooldown_secs ) {
-			$should_disable = true;
+			$state['blocks_ended_at'] = 0;
+		} elseif ( $was_active ) {
+			if ( $blocks_ended_at <= 0 ) {
+				/* First check after blocks cleared: start cooldown now */
+				$state['blocks_ended_at'] = $now;
+				$blocks_ended_at          = $now;
+				$should_disable           = true;
+			} elseif ( ( $now - $blocks_ended_at ) < $cooldown_secs ) {
+				$should_disable = true;
+			}
 		}
 
 		$desired_proxy = ! $should_disable;
@@ -101,8 +132,9 @@ class AyudaWP_BLG_Cron_Manager {
 			if ( $was_active ) {
 				$state_changed_to_inactive = true;
 			}
-			$state['bypass_active'] = 0;
-			$state['bypass_since']  = 0;
+			$state['bypass_active']   = 0;
+			$state['bypass_since']    = 0;
+			$state['blocks_ended_at'] = 0;
 		}
 
 		ayudawp_blg_save_state( $state );

@@ -57,6 +57,7 @@
 		var b = document.getElementById( 'blg-status-blocked' );
 		var p = document.getElementById( 'blg-status-bypass' );
 		var l = document.getElementById( 'blg-status-lastcheck' );
+		var n = document.getElementById( 'blg-status-nextcheck' );
 		if ( b && d.blocked !== undefined ) {
 			var isB = d.blocked === 'SI';
 			b.innerHTML = '<span class="blg-badge ' + ( isB ? 'blg-badge-danger' : 'blg-badge-ok' ) + '">' + ( isB ? 'SI' : 'NO' ) + '</span>';
@@ -66,6 +67,7 @@
 			p.innerHTML = '<span class="blg-badge ' + ( isP ? 'blg-badge-warning' : 'blg-badge-ok' ) + '">' + ( isP ? 'SI' : 'NO' ) + '</span>';
 		}
 		if ( l && d.lastCheck ) { l.textContent = d.lastCheck; }
+		if ( n && d.nextCheck ) { n.textContent = d.nextCheck; }
 	}
 
 	function refreshDns( html ) {
