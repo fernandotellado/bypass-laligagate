@@ -137,6 +137,9 @@ Si fuerzas el proxy OFF manualmente, el cron automático **no lo cambiará** has
 
 ## Registro de cambios
 
+### 1.2.1
+- Corregido: la tabla de registros DNS de los ajustes no reflejaba el nuevo estado del proxy tras un cambio automático del cron, quedando "atascada" en el estado anterior porque la caché se guardaba antes de aplicar los cambios. Ahora se actualiza tras los cambios y el botón "Comprobar ahora" también refresca la tabla en pantalla.
+
 ### 1.2.0
 - Corregido: el periodo de espera tras los bloqueos se mide ahora desde que terminan los bloqueos, no desde que empezó el bypass. Antes, si los bloqueos duraban más que el periodo de espera, el proxy se reactivaba sin ningún margen real.
 - Añadido: watchdog que reprograma la comprobación automática si por cualquier motivo desaparece del cron de WordPress.
