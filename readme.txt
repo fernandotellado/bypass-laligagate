@@ -4,7 +4,7 @@ Tags: cloudflare, dns, futbol, liga, proxy
 Requires at least: 5.6
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.2.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -95,6 +95,9 @@ Sí, por defecto envía un email al administrador del sitio cuando el proxy se d
 No, solo con Cloudflare. Los DNS del dominio deben estar gestionados por Cloudflare.
 
 == Registro de cambios ==
+
+= 1.2.1 =
+- Corregido: la tabla de registros DNS de los ajustes no reflejaba el nuevo estado del proxy tras un cambio automático del cron. Quedaba "atascada" en el estado anterior porque la caché se guardaba antes de aplicar los cambios. Ahora se actualiza tras los cambios y el botón "Comprobar ahora" también refresca la tabla en pantalla.
 
 = 1.2.0 =
 - Corregido: el periodo de espera tras los bloqueos ahora se mide desde que terminan los bloqueos, no desde que empezó el bypass. Antes, si los bloqueos duraban más que el propio periodo de espera, el proxy se reactivaba sin ningún margen.

@@ -105,17 +105,36 @@ class AyudaWP_BLG_Cron_Manager {
 
 		$desired_proxy = ! $should_disable;
 
-		/* Fetch fresh DNS and apply changes */
-		$fresh = $api->fetch_dns_records();
-		if ( ! empty( $fresh ) ) {
-			ayudawp_blg_save_dns_cache( $fresh );
-		}
+		/*
+		 * Fetch DNS once to know current state, apply changes, then re-fetch
+		 * only if we actually changed anything so the admin cache reflects
+		 * the post-update state. Otherwise the DNS table in the settings
+		 * page would stay stuck on the pre-change state until somebody
+		 * pressed "Probar conexión y cargar DNS" again.
+		 */
+		$fresh   = $api->fetch_dns_records();
+		$changed = false;
 
 		foreach ( $cfg['selected_records'] as $rid ) {
 			$rec = ayudawp_blg_find_record( $fresh, $rid );
-			if ( $rec ) {
-				$api->set_proxy_status( $rec, $desired_proxy );
+			if ( ! $rec ) {
+				continue;
 			}
+			$result = $api->set_proxy_status( $rec, $desired_proxy );
+			if ( ! empty( $result['success'] ) && empty( $result['skipped'] ) ) {
+				$changed = true;
+			}
+		}
+
+		if ( $changed ) {
+			$updated = $api->fetch_dns_records();
+			if ( ! empty( $updated ) ) {
+				$fresh = $updated;
+			}
+		}
+
+		if ( ! empty( $fresh ) ) {
+			ayudawp_blg_save_dns_cache( $fresh );
 		}
 
 		/* Detect state changes for email notifications */

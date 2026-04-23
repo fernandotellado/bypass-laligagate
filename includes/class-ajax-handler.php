@@ -181,12 +181,18 @@ class AyudaWP_BLG_Ajax_Handler {
 
 		$is_bypass = ! empty( $state['bypass_active'] ) || ! empty( $state['manual_override'] );
 
+		$admin = new AyudaWP_BLG_Admin_Page();
+		ob_start();
+		$admin->render_dns_table( ayudawp_blg_get_dns_cache(), $cfg['selected_records'] );
+		$html = ob_get_clean();
+
 		wp_send_json_success( array(
 			'message'   => $msg,
 			'blocked'   => $state['last_status'],
 			'bypass'    => $is_bypass ? 'SI' : 'NO',
 			'lastCheck' => $state['last_check'],
 			'nextCheck' => $diag['next_human'],
+			'html'      => $html,
 		) );
 	}
 

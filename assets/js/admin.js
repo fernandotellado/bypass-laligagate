@@ -99,6 +99,7 @@
 					else if ( r.data.bypass === 'SI' ) { type = 'warning'; }
 					showMsg( actionStatus, r.data.message, type );
 					updateStatus( r.data );
+					if ( r.data.html ) { refreshDns( r.data.html ); }
 				} else {
 					showMsg( actionStatus, ( r.data && r.data.message ) || 'Error', 'error' );
 				}
