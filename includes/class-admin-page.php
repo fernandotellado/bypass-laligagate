@@ -59,6 +59,18 @@ class AyudaWP_BLG_Admin_Page {
 		$s['min_isps']            = isset( $input['min_isps'] ) ? max( 1, intval( $input['min_isps'] ) ) : $existing['min_isps'];
 		$s['email_notifications'] = ! empty( $input['email_notifications'] ) ? 1 : 0;
 		$s['delete_data']         = ! empty( $input['delete_data'] ) ? 1 : 0;
+
+		$s['summary_enabled'] = ! empty( $input['summary_enabled'] ) ? 1 : 0;
+		$freq                 = isset( $input['summary_frequency'] ) ? sanitize_text_field( $input['summary_frequency'] ) : $existing['summary_frequency'];
+		$s['summary_frequency'] = in_array( $freq, array( 'daily', 'weekly' ), true ) ? $freq : 'weekly';
+		$time_raw             = isset( $input['summary_time'] ) ? sanitize_text_field( $input['summary_time'] ) : $existing['summary_time'];
+		if ( preg_match( '/^([01]?\d|2[0-3]):([0-5]\d)$/', $time_raw, $m ) ) {
+			$s['summary_time'] = str_pad( $m[1], 2, '0', STR_PAD_LEFT ) . ':' . $m[2];
+		} else {
+			$s['summary_time'] = '10:00';
+		}
+		$s['summary_last_sent_period_end_ts'] = intval( $existing['summary_last_sent_period_end_ts'] ?? 0 );
+
 		return $s;
 	}
 
@@ -260,6 +272,34 @@ class AyudaWP_BLG_Admin_Page {
 							<td>
 								<label><input type="checkbox" name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[delete_data]" value="1" <?php checked( $cfg['delete_data'], 1 ); ?> /> Eliminar todos los datos del plugin de la base de datos al borrar el plugin</label>
 								<p class="description">Si desmarcas esta opción, la configuración se conservará para una futura reinstalación.</p>
+							</td>
+						</tr>
+					</table>
+				</div>
+				<div class="ayudawp-blg-card">
+					<h2>Resumen por email</h2>
+					<table class="form-table">
+						<tr>
+							<th scope="row">Enviar resumen periódico</th>
+							<td>
+								<label><input type="checkbox" name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[summary_enabled]" value="1" <?php checked( $cfg['summary_enabled'], 1 ); ?> /> Enviar un resumen por email con el tiempo que la web habría estado inaccesible si no fuese por el bypass</label>
+								<p class="description">Solo se cuenta el tiempo de bloqueos reales detectados en hayahora.futbol; no incluye el periodo de espera posterior.</p>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row">Frecuencia</th>
+							<td>
+								<select name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[summary_frequency]">
+									<option value="weekly" <?php selected( $cfg['summary_frequency'], 'weekly' ); ?>>Semanal</option>
+									<option value="daily" <?php selected( $cfg['summary_frequency'], 'daily' ); ?>>Diaria</option>
+								</select>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row">Hora de envío</th>
+							<td>
+								<input type="time" name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[summary_time]" value="<?php echo esc_attr( $cfg['summary_time'] ); ?>" />
+								<p class="description">Se usa la zona horaria configurada en Ajustes &rarr; General. Los partidos de La Liga nunca son por la mañana, por eso por defecto se envía a las 10:00.</p>
 							</td>
 						</tr>
 					</table>

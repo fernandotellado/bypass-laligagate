@@ -18,4 +18,5 @@ if ( $delete ) {
 	delete_option( 'ayudawp_blg_settings' );
 	delete_option( 'ayudawp_blg_dns_cache' );
 	delete_option( 'ayudawp_blg_bypass_state' );
+	delete_option( 'ayudawp_blg_block_log' );
 }

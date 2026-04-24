@@ -3,7 +3,7 @@
  * Plugin Name: Bypass LaLigaGate
  * Plugin URI: https://mantenimiento.ayudawp.com
  * Description: Gestiona automáticamente el proxy de Cloudflare durante los bloqueos de IP por partidos de fútbol en España, alternando entre Proxied (CDN) y DNS Only.
- * Version: 1.2.1
+ * Version: 1.3.0
  * Author: Mantenimiento WordPress
  * Author URI: https://mantenimiento.ayudawp.com
  * License: GPL v2 or later
@@ -20,16 +20,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'AYUDAWP_BLG_VERSION', '1.2.1' );
+define( 'AYUDAWP_BLG_VERSION', '1.3.0' );
 define( 'AYUDAWP_BLG_FILE', __FILE__ );
 define( 'AYUDAWP_BLG_DIR', plugin_dir_path( __FILE__ ) );
 define( 'AYUDAWP_BLG_URL', plugin_dir_url( __FILE__ ) );
 define( 'AYUDAWP_BLG_CRON_HOOK', 'ayudawp_blg_check_status' );
+define( 'AYUDAWP_BLG_SUMMARY_HOOK', 'ayudawp_blg_send_summary' );
 
-/* Tres opciones independientes en wp_options para evitar sobreescrituras */
+/* Opciones independientes en wp_options para evitar sobreescrituras */
 define( 'AYUDAWP_BLG_OPT_CONFIG', 'ayudawp_blg_settings' );   /* Credenciales, intervalos, registros seleccionados */
 define( 'AYUDAWP_BLG_OPT_DNS', 'ayudawp_blg_dns_cache' );     /* Cache de registros DNS de Cloudflare */
 define( 'AYUDAWP_BLG_OPT_STATE', 'ayudawp_blg_bypass_state' ); /* Estado del bypass, ultima comprobacion */
+define( 'AYUDAWP_BLG_OPT_LOG', 'ayudawp_blg_block_log' );     /* Historial de episodios de bloqueo para el resumen */
 
 require_once AYUDAWP_BLG_DIR . 'includes/class-cloudflare-api.php';
 require_once AYUDAWP_BLG_DIR . 'includes/class-block-checker.php';
@@ -70,6 +72,10 @@ function ayudawp_blg_deactivate() {
 	$ts = wp_next_scheduled( AYUDAWP_BLG_CRON_HOOK );
 	if ( $ts ) {
 		wp_unschedule_event( $ts, AYUDAWP_BLG_CRON_HOOK );
+	}
+	$ts_sum = wp_next_scheduled( AYUDAWP_BLG_SUMMARY_HOOK );
+	if ( $ts_sum ) {
+		wp_unschedule_event( $ts_sum, AYUDAWP_BLG_SUMMARY_HOOK );
 	}
 	$cfg = ayudawp_blg_get_config();
 	$dns = ayudawp_blg_get_dns_cache();
@@ -121,6 +127,10 @@ function ayudawp_blg_default_config() {
 		'min_isps'            => 1,
 		'email_notifications' => 1,
 		'delete_data'         => 1,
+		'summary_enabled'                 => 0,
+		'summary_frequency'               => 'weekly',
+		'summary_time'                    => '10:00',
+		'summary_last_sent_period_end_ts' => 0,
 	);
 }
 
@@ -161,6 +171,30 @@ function ayudawp_blg_get_dns_cache() {
 
 function ayudawp_blg_save_dns_cache( $records ) {
 	return update_option( AYUDAWP_BLG_OPT_DNS, $records, false );
+}
+
+/* ---- Helpers: historial de bloqueos ---- */
+function ayudawp_blg_get_block_log() {
+	$log = get_option( AYUDAWP_BLG_OPT_LOG, array() );
+	return is_array( $log ) ? $log : array();
+}
+
+function ayudawp_blg_save_block_log( $log ) {
+	return update_option( AYUDAWP_BLG_OPT_LOG, array_values( $log ), false );
+}
+
+/**
+ * Append a block episode to the log and cap length at 500 entries
+ * (oldest dropped first). Episodes have the shape:
+ *   array( 'start' => int, 'end' => int (0 = still open), 'isps_max' => int )
+ */
+function ayudawp_blg_append_block_episode( $episode ) {
+	$log   = ayudawp_blg_get_block_log();
+	$log[] = $episode;
+	if ( count( $log ) > 500 ) {
+		$log = array_slice( $log, -500 );
+	}
+	return ayudawp_blg_save_block_log( $log );
 }
 
 /* ---- Helpers: busqueda de registros ---- */
