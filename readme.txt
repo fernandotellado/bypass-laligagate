@@ -4,7 +4,7 @@ Tags: cloudflare, dns, futbol, liga, proxy
 Requires at least: 5.6
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.2.1
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -95,6 +95,10 @@ Sí, por defecto envía un email al administrador del sitio cuando el proxy se d
 No, solo con Cloudflare. Los DNS del dominio deben estar gestionados por Cloudflare.
 
 == Registro de cambios ==
+
+= 1.3.0 =
+- Añadido: resumen periódico por email (diario o semanal, opcional, desactivado por defecto) con el tiempo total que la web habría estado inaccesible si el plugin no hubiese desactivado el proxy durante los bloqueos. Configurable con hora de envío (por defecto 10:00) en la zona horaria del sitio, igual que las entradas programadas.
+- Añadido: historial interno de episodios de bloqueo (últimos 500) que alimenta el resumen. Se registra a partir de las transiciones del estado NO/SI de hayahora.futbol.
 
 = 1.2.1 =
 - Corregido: la tabla de registros DNS de los ajustes no reflejaba el nuevo estado del proxy tras un cambio automático del cron. Quedaba "atascada" en el estado anterior porque la caché se guardaba antes de aplicar los cambios. Ahora se actualiza tras los cambios y el botón "Comprobar ahora" también refresca la tabla en pantalla.
