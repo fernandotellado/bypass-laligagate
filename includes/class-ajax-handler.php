@@ -179,6 +179,10 @@ class AyudaWP_BLG_Ajax_Handler {
 			}
 		}
 
+		if ( ! empty( $state['last_source'] ) ) {
+			$msg .= ' (fuente: ' . $state['last_source'] . ')';
+		}
+
 		$is_bypass = ! empty( $state['bypass_active'] ) || ! empty( $state['manual_override'] );
 
 		$admin = new AyudaWP_BLG_Admin_Page();
@@ -191,6 +195,7 @@ class AyudaWP_BLG_Ajax_Handler {
 			'blocked'   => $state['last_status'],
 			'bypass'    => $is_bypass ? 'SI' : 'NO',
 			'lastCheck' => $state['last_check'],
+			'lastSource' => $state['last_source'] ?? '',
 			'nextCheck' => $diag['next_human'],
 			'html'      => $html,
 		) );

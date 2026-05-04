@@ -4,7 +4,7 @@ Tags: cloudflare, dns, futbol, liga, proxy
 Requires at least: 5.6
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.3.0
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -95,6 +95,12 @@ Sí, por defecto envía un email al administrador del sitio cuando el proxy se d
 No, solo con Cloudflare. Los DNS del dominio deben estar gestionados por Cloudflare.
 
 == Registro de cambios ==
+
+= 1.4.0 =
+- Mejorado: la comprobación de bloqueos usa por defecto el endpoint ligero `blocked-any.txt` (~150 bytes) en lugar del JSON completo (~8 MB), reduciendo unas 50.000 veces el tráfico por chequeo. Si el TXT falla por cualquier motivo, vuelve automáticamente al JSON.
+- Añadido: cuando el ajuste "Mínimo de ISPs" es mayor que 1 se sigue usando el JSON, ya que el TXT no expone el detalle por proveedor.
+- Añadido: indicación de la fuente consultada (txt / json / json+txt-fallback) en la fila "Última comprobación" de la pantalla de ajustes, para auditar que el cambio funciona como se espera.
+- Añadido: filtros `ayudawp_blg_txt_url`, `ayudawp_blg_json_url` y `ayudawp_blg_source` para forzar endpoints o estrategia desde código.
 
 = 1.3.0 =
 - Añadido: resumen periódico por email (diario o semanal, opcional, desactivado por defecto) con el tiempo total que la web habría estado inaccesible si el plugin no hubiese desactivado el proxy durante los bloqueos. Configurable con hora de envío (por defecto 10:00) en la zona horaria del sitio, igual que las entradas programadas.

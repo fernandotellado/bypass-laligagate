@@ -142,6 +142,9 @@ class AyudaWP_BLG_Admin_Page {
 						<th>Última comprobación</th>
 						<td id="blg-status-lastcheck" colspan="2">
 							<?php echo esc_html( $has_checked ? $state['last_check'] : 'Pendiente' ); ?>
+							<?php if ( $has_checked && ! empty( $state['last_source'] ) ) : ?>
+								<span class="blg-status-note" title="Endpoint consultado en la última comprobación">(fuente: <?php echo esc_html( $state['last_source'] ); ?>)</span>
+							<?php endif; ?>
 							<?php if ( $has_checked && $diag['stale'] ) : ?>
 								<span class="blg-badge blg-badge-warning blg-cron-badge" title="La comprobación debería haberse ejecutado antes.">retrasada</span>
 							<?php endif; ?>
