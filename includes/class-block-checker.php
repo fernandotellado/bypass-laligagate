@@ -2,9 +2,10 @@
 /**
  * Block status checker.
  *
- * Fetches the hayahora.futbol JSON endpoint to determine if there are
- * active football-related IP blocks in Spain. Operates in preventive mode:
- * any active block triggers the bypass regardless of domain-specific detection.
+ * Resolves whether there are active football-related IP blocks in Spain by
+ * consulting hayahora.futbol. Prefers the lightweight TXT endpoint
+ * (blocked-any.txt, ~150 B) and falls back to the full JSON (~8 MB) when the
+ * TXT is unavailable or when the user requires per-ISP granularity (min_isps>1).
  *
  * @package Bypass_LaLigaGate
  */
@@ -19,31 +20,138 @@ if ( ! defined( 'ABSPATH' ) ) {
 class AyudaWP_BLG_Block_Checker {
 
 	/**
-	 * Remote JSON endpoint URL.
+	 * Remote JSON endpoint URL (full dataset, ~8 MB).
 	 *
 	 * @var string
 	 */
 	private $json_url = 'https://hayahora.futbol/estado/data.json';
 
 	/**
+	 * Remote TXT endpoint URL (list of blocked IPs, one per line).
+	 *
+	 * @var string
+	 */
+	private $txt_url = 'https://hayahora.futbol/estado/blocked-any.txt';
+
+	/**
 	 * Check if there are active blocks filtered by ISP count.
 	 *
-	 * Returns true only when the number of distinct ISPs reporting
-	 * blocked IPs meets or exceeds $min_isps. This avoids false
-	 * positives from a single ISP with network issues.
+	 * Strategy:
+	 *   - min_isps == 1 → try TXT first (cheap), fall back to JSON on error.
+	 *   - min_isps  > 1 → use JSON (TXT lacks per-ISP detail).
 	 *
-	 * @param int $min_isps Minimum ISPs with blocks to trigger (default 2).
-	 * @return array{blocked: bool, last_update: string, error: string, blocked_isps: int}
+	 * Both endpoints can be overridden with the 'ayudawp_blg_txt_url' and
+	 * 'ayudawp_blg_json_url' filters; the source preference can be forced
+	 * with 'ayudawp_blg_source' returning 'txt' or 'json'.
+	 *
+	 * @param int $min_isps Minimum ISPs with blocks to trigger (default 1).
+	 * @return array{blocked: bool, last_update: string, error: string, blocked_isps: int, source: string}
 	 */
 	public function check_status( $min_isps = 1 ) {
+		$min_isps = max( 1, intval( $min_isps ) );
+
+		$default_source = ( 1 === $min_isps ) ? 'txt' : 'json';
+		$source         = (string) apply_filters( 'ayudawp_blg_source', $default_source, $min_isps );
+
+		if ( 'txt' === $source ) {
+			$result = $this->check_via_txt();
+			if ( '' === $result['error'] ) {
+				return $result;
+			}
+			/* TXT failed: fall back to JSON so a hosting glitch doesn't blind us. */
+			$result            = $this->check_via_json( $min_isps );
+			$result['source']  = $result['source'] . '+txt-fallback';
+			return $result;
+		}
+
+		return $this->check_via_json( $min_isps );
+	}
+
+	/**
+	 * Lightweight check using the plain-text endpoint.
+	 *
+	 * Each non-empty line is a blocked IP. We don't validate the IP format
+	 * strictly (the upstream owns that); we only require that the body parses
+	 * into ≥1 line for the result to count as "blocked".
+	 *
+	 * @return array{blocked: bool, last_update: string, error: string, blocked_isps: int, source: string}
+	 */
+	private function check_via_txt() {
 		$result = array(
 			'blocked'      => false,
 			'last_update'  => '',
 			'error'        => '',
 			'blocked_isps' => 0,
+			'source'       => 'txt',
 		);
 
-		$response = wp_remote_get( $this->json_url, array(
+		$url      = (string) apply_filters( 'ayudawp_blg_txt_url', $this->txt_url );
+		$response = wp_remote_get( $url, array(
+			'timeout'     => 10,
+			'redirection' => 3,
+			'user-agent'  => 'BypassLaLigaGate/' . AYUDAWP_BLG_VERSION . '; ' . home_url( '/' ),
+		) );
+
+		if ( is_wp_error( $response ) ) {
+			$result['error'] = $response->get_error_message();
+			return $result;
+		}
+
+		$code = wp_remote_retrieve_response_code( $response );
+		if ( 200 !== $code ) {
+			$result['error'] = 'HTTP ' . $code;
+			return $result;
+		}
+
+		$body  = (string) wp_remote_retrieve_body( $response );
+		$lines = preg_split( '/\r\n|\r|\n/', trim( $body ) );
+		$ips   = array();
+		if ( is_array( $lines ) ) {
+			foreach ( $lines as $line ) {
+				$line = trim( $line );
+				if ( '' !== $line ) {
+					$ips[] = $line;
+				}
+			}
+		}
+
+		$result['blocked'] = ( count( $ips ) > 0 );
+		/*
+		 * The TXT doesn't break results down by ISP. We expose the IP count as
+		 * blocked_isps so the episode log still records "how bad it got",
+		 * accepting that the metric is now "max blocked IPs", not "max ISPs".
+		 */
+		$result['blocked_isps'] = count( $ips );
+
+		$last_modified = wp_remote_retrieve_header( $response, 'last-modified' );
+		if ( ! empty( $last_modified ) ) {
+			$ts = strtotime( $last_modified );
+			if ( false !== $ts ) {
+				$result['last_update'] = gmdate( 'c', $ts );
+			}
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Full check against the JSON endpoint. Used as fallback or when the user
+	 * needs min_isps > 1 (TXT can't tell us per-ISP detail).
+	 *
+	 * @param int $min_isps Minimum ISPs with blocks to trigger.
+	 * @return array{blocked: bool, last_update: string, error: string, blocked_isps: int, source: string}
+	 */
+	private function check_via_json( $min_isps ) {
+		$result = array(
+			'blocked'      => false,
+			'last_update'  => '',
+			'error'        => '',
+			'blocked_isps' => 0,
+			'source'       => 'json',
+		);
+
+		$url      = (string) apply_filters( 'ayudawp_blg_json_url', $this->json_url );
+		$response = wp_remote_get( $url, array(
 			'timeout'     => 20,
 			'redirection' => 3,
 			'user-agent'  => 'BypassLaLigaGate/' . AYUDAWP_BLG_VERSION . '; ' . home_url( '/' ),
@@ -68,15 +176,13 @@ class AyudaWP_BLG_Block_Checker {
 			return $result;
 		}
 
-		/* Extract last update timestamp */
 		if ( ! empty( $json['lastUpdate'] ) && is_string( $json['lastUpdate'] ) ) {
 			$result['last_update'] = $json['lastUpdate'];
 		}
 
-		/* Count distinct ISPs with blocked IPs */
-		$blocked_isps              = $this->count_blocked_isps( $json );
-		$result['blocked_isps']    = $blocked_isps;
-		$result['blocked']         = ( $blocked_isps >= max( 1, $min_isps ) );
+		$blocked_isps           = $this->count_blocked_isps( $json );
+		$result['blocked_isps'] = $blocked_isps;
+		$result['blocked']      = ( $blocked_isps >= max( 1, $min_isps ) );
 
 		return $result;
 	}

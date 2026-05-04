@@ -72,6 +72,7 @@ class AyudaWP_BLG_Cron_Manager {
 		$now                    = time();
 		$state['last_check']    = current_time( 'mysql' );
 		$state['last_check_ts'] = $now;
+		$state['last_source']   = isset( $status['source'] ) ? (string) $status['source'] : '';
 
 		if ( ! empty( $status['error'] ) ) {
 			ayudawp_blg_save_state( $state );
