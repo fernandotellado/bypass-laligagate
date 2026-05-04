@@ -137,6 +137,12 @@ Si fuerzas el proxy OFF manualmente, el cron automático **no lo cambiará** has
 
 ## Registro de cambios
 
+### 1.4.0
+- Mejorado: la comprobación de bloqueos usa por defecto el endpoint ligero `blocked-any.txt` (~150 bytes) en lugar del JSON completo (~8 MB), reduciendo unas 50.000 veces el tráfico por chequeo. Si el TXT falla por cualquier motivo, vuelve automáticamente al JSON sin perder ningún ciclo.
+- Añadido: cuando el ajuste "Mínimo de ISPs" es mayor que 1 se sigue usando el JSON, ya que el TXT no expone el detalle por proveedor.
+- Añadido: indicación de la fuente consultada (`txt` / `json` / `json+txt-fallback`) en la fila "Última comprobación" de la pantalla de ajustes y en la respuesta del botón "Comprobar ahora", para auditar que el cambio funciona como se espera.
+- Añadido: filtros `ayudawp_blg_txt_url`, `ayudawp_blg_json_url` y `ayudawp_blg_source` para forzar endpoints o estrategia desde código.
+
 ### 1.3.0
 - Añadido: resumen periódico por email (diario o semanal, opcional, desactivado por defecto) con el tiempo total que la web habría estado inaccesible si el plugin no hubiese desactivado el proxy durante los bloqueos. Configurable con hora de envío (por defecto 10:00) en la zona horaria del sitio, igual que las entradas programadas.
 - Añadido: historial interno de episodios de bloqueo (últimos 500) que alimenta el resumen. Se registra a partir de las transiciones del estado NO/SI de hayahora.futbol.
