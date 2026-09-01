@@ -56,7 +56,9 @@ class AyudaWP_BLG_Admin_Page {
 		if ( empty( $s['cron_secret'] ) ) {
 			$s['cron_secret'] = wp_generate_password( 32, false, false );
 		}
-		$s['min_isps']            = isset( $input['min_isps'] ) ? max( 1, intval( $input['min_isps'] ) ) : $existing['min_isps'];
+		$s['min_isps']            = isset( $input['min_isps'] ) ? max( 1, min( 5, intval( $input['min_isps'] ) ) ) : $existing['min_isps'];
+		$mode                     = isset( $input['detection_mode'] ) ? sanitize_text_field( $input['detection_mode'] ) : $existing['detection_mode'];
+		$s['detection_mode']      = in_array( $mode, array( 'global', 'own_ip' ), true ) ? $mode : 'global';
 		$s['email_notifications'] = ! empty( $input['email_notifications'] ) ? 1 : 0;
 		$s['delete_data']         = ! empty( $input['delete_data'] ) ? 1 : 0;
 
@@ -78,10 +80,11 @@ class AyudaWP_BLG_Admin_Page {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
 		}
-		$cfg   = ayudawp_blg_get_config();
-		$state = ayudawp_blg_get_state();
-		$dns   = ayudawp_blg_get_dns_cache();
-		$diag  = ayudawp_blg_get_cron_diagnostics();
+		$cfg     = ayudawp_blg_get_config();
+		$state   = ayudawp_blg_get_state();
+		$dns     = ayudawp_blg_get_dns_cache();
+		$diag    = ayudawp_blg_get_cron_diagnostics();
+		$own_ips = ayudawp_blg_get_own_ips_cache();
 
 		$is_blocked  = 'SI' === $state['last_status'];
 		$is_manual   = ! empty( $state['manual_override'] );
@@ -113,7 +116,7 @@ class AyudaWP_BLG_Admin_Page {
 				<table class="ayudawp-blg-status-table">
 					<tr>
 						<th>Bloqueos activos</th>
-						<td id="blg-status-blocked"><span class="blg-badge <?php echo $is_blocked ? 'blg-badge-danger' : 'blg-badge-ok'; ?>"><?php echo $is_blocked ? 'SI' : 'NO'; ?></span></td>
+						<td id="blg-status-blocked"><span class="blg-badge <?php echo esc_attr( $is_blocked ? 'blg-badge-danger' : 'blg-badge-ok' ); ?>"><?php echo esc_html( $is_blocked ? 'SI' : 'NO' ); ?></span></td>
 						<td class="blg-status-detail">
 							<?php if ( $is_blocked ) : ?>
 								Hay partidos con bloqueos activos.
@@ -127,7 +130,7 @@ class AyudaWP_BLG_Admin_Page {
 					</tr>
 					<tr>
 						<th>Bypass activo (proxy OFF)</th>
-						<td id="blg-status-bypass"><span class="blg-badge <?php echo $is_bypass ? 'blg-badge-warning' : 'blg-badge-ok'; ?>"><?php echo $is_bypass ? 'SI' : 'NO'; ?></span></td>
+						<td id="blg-status-bypass"><span class="blg-badge <?php echo esc_attr( $is_bypass ? 'blg-badge-warning' : 'blg-badge-ok' ); ?>"><?php echo esc_html( $is_bypass ? 'SI' : 'NO' ); ?></span></td>
 						<td class="blg-status-detail">
 							<?php if ( $is_manual ) : ?>
 								Forzado manualmente. Pulsa "Restaurar proxy ON" para devolver el control al cron.
@@ -139,9 +142,36 @@ class AyudaWP_BLG_Admin_Page {
 						</td>
 					</tr>
 					<tr>
+						<th>Detección</th>
+						<td id="blg-status-mode" colspan="2">
+							<?php if ( 'own_ip' === $cfg['detection_mode'] ) : ?>
+								Solo bloqueos de las IPs de esta web
+								<?php if ( ! empty( $own_ips['ips'] ) ) : ?>
+									<span class="blg-status-note">IPs vigiladas: <code><?php echo esc_html( implode( ', ', $own_ips['ips'] ) ); ?></code></span>
+									<?php if ( ! empty( $state['last_matched'] ) ) : ?>
+										<br /><span class="blg-badge blg-badge-danger">bloqueada</span>
+										<span class="blg-status-detail"><code><?php echo esc_html( implode( ', ', (array) $state['last_matched'] ) ); ?></code></span>
+									<?php endif; ?>
+								<?php else : ?>
+									<span class="blg-badge blg-badge-warning">sin resolver</span>
+									<span class="blg-status-detail">Todavía no se han podido resolver las IPs públicas de los registros seleccionados. Hasta que se resuelvan, el plugin actúa como en el modo "cualquier bloqueo en España". Se resuelven en la primera comprobación con el proxy activo.</span>
+								<?php endif; ?>
+							<?php else : ?>
+								Cualquier bloqueo activo en España
+							<?php endif; ?>
+							<?php if ( ! empty( $state['last_isp_names'] ) ) : ?>
+								<br /><span class="blg-status-note">Operadores que bloquean: <?php echo esc_html( implode( ', ', (array) $state['last_isp_names'] ) ); ?></span>
+							<?php endif; ?>
+						</td>
+					</tr>
+					<tr>
 						<th>Última comprobación</th>
 						<td id="blg-status-lastcheck" colspan="2">
 							<?php echo esc_html( $has_checked ? $state['last_check'] : 'Pendiente' ); ?>
+							<?php if ( ! empty( $state['last_error'] ) ) : ?>
+								<br /><span class="blg-badge blg-badge-warning">sin datos</span>
+								<span class="blg-status-detail"><?php echo esc_html( $state['last_error'] ); ?> Se mantiene el estado anterior: el bypass no cambia mientras no haya una respuesta fiable.</span>
+							<?php endif; ?>
 							<?php if ( $has_checked && ! empty( $state['last_source'] ) ) : ?>
 								<span class="blg-status-note" title="Endpoint consultado en la última comprobación">(fuente: <?php echo esc_html( $state['last_source'] ); ?>)</span>
 							<?php endif; ?>
@@ -195,6 +225,7 @@ class AyudaWP_BLG_Admin_Page {
 							<th scope="row" id="blg-label-apikey">Global API Key</th>
 							<td>
 								<input type="password" name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[cf_api_key]" id="blg-field-apikey" value="<?php echo esc_attr( $cfg['cf_api_key'] ); ?>" class="regular-text" autocomplete="off" />
+								<?php // phpcs:disable PluginCheck.CodeAnalysis.Offloading.OffloadedContent -- son enlaces <a href> al panel de Cloudflare para que el usuario copie sus credenciales, no se carga ningun asset remoto. ?>
 								<div class="blg-help-box" id="blg-help-apikey-global">
 									<p><strong>Dónde encontrarla:</strong></p>
 									<ol><li>Entra en <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">Mi perfil &rarr; API Tokens</a></li><li>Junto a "Global API Key", pulsa <strong>Ver</strong></li><li>Confirma tu contraseña y copia la clave</li></ol>
@@ -203,6 +234,7 @@ class AyudaWP_BLG_Admin_Page {
 									<p><strong>Cómo crear el token:</strong></p>
 									<ol><li>Ve a <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">Mi perfil &rarr; API Tokens</a> &rarr; <strong>Crear token</strong></li><li>Usa la plantilla <strong>"Editar zona DNS"</strong></li><li>En Permisos: <code>Zona &gt; DNS &gt; Editar</code> + añade <code>Zona &gt; Zona &gt; Leer</code></li><li>En Recursos de zona: <strong>Incluir &gt; Zona específica</strong> &gt; selecciona el dominio</li><li>Filtro de IP y TTL: déjalos sin configurar</li><li>Pulsa "Ir al resumen", confirma, y copia el token (solo se muestra una vez)</li></ol>
 								</div>
+								<?php // phpcs:enable PluginCheck.CodeAnalysis.Offloading.OffloadedContent ?>
 							</td>
 						</tr>
 						<tr>
@@ -239,7 +271,7 @@ class AyudaWP_BLG_Admin_Page {
 							<th scope="row">Periodo de espera tras desactivar</th>
 							<td><input type="number" name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[cooldown]" value="<?php echo intval( $cfg['cooldown'] ); ?>" min="5" max="600" class="small-text" /> minutos<p class="description">Espera antes de reactivar el proxy tras terminar los bloqueos (5-600 min).</p></td>
 						</tr>
-						<tr<?php echo $diag['unhealthy'] && $has_checked ? ' class="blg-row-highlight"' : ''; ?>>
+						<tr<?php echo ( $diag['unhealthy'] && $has_checked ) ? ' class="blg-row-highlight"' : ''; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- ambas ramas son literales, no hay valor dinamico que escapar. ?>>
 							<th scope="row">Cron externo (opcional)<?php if ( $diag['unhealthy'] && $has_checked ) : ?><br /><span class="blg-badge blg-badge-warning">recomendado</span><?php endif; ?></th>
 							<td>
 								<input type="text" name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[cron_secret]" value="<?php echo esc_attr( $cfg['cron_secret'] ); ?>" class="regular-text" autocomplete="off" />
@@ -258,10 +290,23 @@ class AyudaWP_BLG_Admin_Page {
 					<h2>Opciones generales</h2>
 					<table class="form-table">
 						<tr>
+							<th scope="row">Qué se considera un bloqueo</th>
+							<td>
+								<select name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[detection_mode]" id="blg-field-detection-mode">
+									<option value="global" <?php selected( $cfg['detection_mode'], 'global' ); ?>>Cualquier bloqueo en España</option>
+									<option value="own_ip" <?php selected( $cfg['detection_mode'], 'own_ip' ); ?>>Solo si bloquean las IPs de esta web</option>
+								</select>
+								<div class="blg-help-box">
+									<p><strong>Cualquier bloqueo en España</strong> desactiva el proxy siempre que haya IPs bloqueadas, las tuyas o las de cualquier otro. Es lo que hace el plugin desde la primera versión y nunca se le escapa un bloqueo, pero desde que empieza la liga hay IPs bloqueadas casi todos los fines de semana, así que te vas a quedar sin CDN ni WAF muchas horas sin que tu web esté afectada.</p>
+									<p><strong>Solo si bloquean las IPs de esta web</strong> compara las IPs públicas de los registros que gestionas con las listas de hayahora.futbol y solo actúa cuando alguna coincide. Es lo que hace el comprobador de su web, pero automatizado. Ten en cuenta que hayahora.futbol solo publica IPv4, que las IPs se resuelven mientras el proxy está activo y se guardan en caché, y que si no se pueden resolver el plugin vuelve por su cuenta al modo anterior antes que arriesgarse a dejar la web caída.</p>
+								</div>
+							</td>
+						</tr>
+						<tr>
 							<th scope="row">ISPs mínimos para activar bypass</th>
 							<td>
-								<input type="number" name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[min_isps]" value="<?php echo intval( $cfg['min_isps'] ); ?>" min="1" class="small-text" />
-								<p class="description">Número mínimo de proveedores (ISPs) distintos con bloqueos activos para considerar que hay un bloqueo real de La Liga. Valor recomendado: 2. Con 1 se activa ante cualquier bloqueo, incluso si es un problema de red de un solo operador.</p>
+								<input type="number" name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[min_isps]" value="<?php echo intval( $cfg['min_isps'] ); ?>" min="1" max="5" class="small-text" />
+								<p class="description">Número mínimo de operadores distintos con bloqueos para considerar que es un bloqueo real de La Liga. Con 2 o más se descarta el fallo puntual de red de un solo operador. Hay cinco operadores bajo la orden judicial (Movistar, Vodafone, Orange, Masmovil y DIGI), así que por encima de 5 no se activaría nunca.</p>
 							</td>
 						</tr>
 						<tr>
@@ -309,7 +354,18 @@ class AyudaWP_BLG_Admin_Page {
 				</div>
 				<?php submit_button( 'Guardar cambios' ); ?>
 			</form>
-			<p class="ayudawp-blg-footer">Bypass LaLigaGate v<?php echo esc_html( AYUDAWP_BLG_VERSION ); ?> &mdash; <a href="https://mantenimiento.ayudawp.com" target="_blank" rel="noopener">Mantenimiento WordPress</a></p>
+			<div class="ayudawp-blg-card ayudawp-blg-card--legal">
+				<h2>Esto es un parche, no la solución</h2>
+				<p>Este plugin mantiene tu web en pie mientras dure el bloqueo, pero no arregla el fondo del asunto. Una sentencia permite bloquear IPs enteras de CDN durante los partidos de La Liga y por el camino caen miles de webs que no tienen nada que ver con el fútbol, la tuya entre ellas. Mientras únicamente lo sigamos tapando con apaños técnicos bloquear webs lícitas sale gratis.</p>
+				<p>Si te ha afectado deja constancia, y súmate a lo que ya está en marcha:</p>
+				<ul>
+					<li><a href="https://rootedcon.com/blog/rootedcon-y-hackbcn-se-unen-para-ofrecer-apoyo-tecnico-y-judicial-a-las-victimas-de-laligagate/" target="_blank" rel="noopener">RootedCon y HackBCN</a>: apoyo técnico y judicial para las víctimas de los bloqueos, con un <a href="https://rootedcon.com/blog/laligagate-plantilla-de-denuncia-a-la-aepd/" target="_blank" rel="noopener">modelo de denuncia</a> listo para presentar.</li>
+					<li><a href="https://asociacionstartups.es/laligagate/" target="_blank" rel="noopener">STOP #LaLigaGate</a>: la Asociación Española de Startups está recopilando casos de negocios digitales afectados para defenderlos en bloque.</li>
+					<li><a href="https://ooni.org/install/" target="_blank" rel="noopener">OONI Probe</a>: mide el bloqueo desde tu propia conexión y lo deja registrado en una <a href="https://explorer.ooni.org/search?test_name=web_connectivity&amp;failure=true&amp;only=anomalies&amp;probe_cc=ES" target="_blank" rel="noopener">base de datos pública e independiente</a>.</li>
+				</ul>
+				<p>Cuantos más casos documentados haya más difícil es sostener que esto no afecta a nadie.</p>
+			</div>
+			<p class="ayudawp-blg-footer">Bypass LaLigaGate v<?php echo esc_html( AYUDAWP_BLG_VERSION ); ?> &mdash; <a href="https://mantenimiento.ayudawp.com" target="_blank" rel="noopener">Mantenimiento WordPress</a> &mdash; datos de <a href="https://hayahora.futbol/" target="_blank" rel="noopener">hayahora.futbol</a></p>
 		</div>
 		<?php
 	}
@@ -325,17 +381,26 @@ class AyudaWP_BLG_Admin_Page {
 		<table class="widefat striped ayudawp-blg-dns-table">
 			<thead><tr><th class="check-column"><input type="checkbox" id="blg-select-all" /></th><th>Nombre</th><th>Tipo</th><th>Contenido</th><th>Proxy</th></tr></thead>
 			<tbody>
-			<?php foreach ( $records as $r ) :
+			<?php
+			$has_ipv6 = false;
+			foreach ( $records as $r ) :
 				$rid = $r['id'] ?? '';
 				$chk = in_array( $rid, $selected_ids, true ) ? 'checked' : '';
 				$prx = ! empty( $r['proxied'] ) ? 'ON' : 'OFF';
 				$cls = 'ON' === $prx ? 'blg-proxy-on' : 'blg-proxy-off';
+				$v6  = ! AyudaWP_BLG_Own_IP_Resolver::is_verifiable_record( $r );
+				if ( $v6 && '' !== $chk ) {
+					$has_ipv6 = true;
+				}
 			?>
-			<tr><td><input type="checkbox" name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[selected_records][]" value="<?php echo esc_attr( $rid ); ?>" <?php echo esc_attr( $chk ); ?> /></td><td><?php echo esc_html( $r['name'] ?? '' ); ?></td><td><code><?php echo esc_html( $r['type'] ?? '' ); ?></code></td><td><code><?php echo esc_html( $r['content'] ?? '' ); ?></code></td><td><span class="<?php echo esc_attr( $cls ); ?>"><?php echo esc_html( $prx ); ?></span></td></tr>
+			<tr><td><input type="checkbox" name="<?php echo esc_attr( AYUDAWP_BLG_OPT_CONFIG ); ?>[selected_records][]" value="<?php echo esc_attr( $rid ); ?>" <?php echo esc_attr( $chk ); ?> /></td><td><?php echo esc_html( $r['name'] ?? '' ); ?><?php if ( $v6 ) : ?> <span class="blg-badge blg-badge-warning" title="hayahora.futbol solo publica IPs versión 4, así que este registro no se puede comprobar contra las listas.">sin verificar</span><?php endif; ?></td><td><code><?php echo esc_html( $r['type'] ?? '' ); ?></code></td><td><code><?php echo esc_html( $r['content'] ?? '' ); ?></code></td><td><span class="<?php echo esc_attr( $cls ); ?>"><?php echo esc_html( $prx ); ?></span></td></tr>
 			<?php endforeach; ?>
 			</tbody>
 		</table>
 		</div>
+		<?php if ( $has_ipv6 ) : ?>
+			<p class="description">Los registros marcados como <strong>sin verificar</strong> son AAAA (IPv6) y hayahora.futbol solo publica direcciones IPv4, así que no hay lista contra la que compararlos. Se les cambia el proxy igual que al resto, pero siguiendo lo que digan tus registros IPv4 o el estado general de los bloqueos, nunca su propia dirección.</p>
+		<?php endif; ?>
 		<?php
 	}
 }

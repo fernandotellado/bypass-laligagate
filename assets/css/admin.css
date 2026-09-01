@@ -59,3 +59,10 @@
 .ayudawp-blg-footer { margin-top: 20px; color: #999; font-size: 12px; }
 .ayudawp-blg-footer a { color: #999; }
 .ayudawp-blg-wrap .button[disabled] { opacity: 0.6; cursor: not-allowed; }
+
+/* Aviso legal de cierre: se separa del resto de tarjetas para que no pase por otro ajuste mas */
+.ayudawp-blg-card--legal { background: #fcf0f1; border-color: #d63638; border-left-width: 4px; margin-top: 28px; }
+.ayudawp-blg-card--legal h2 { color: #8a1f21; font-size: 15px; }
+.ayudawp-blg-card--legal p { font-size: 13px; line-height: 1.6; max-width: 800px; }
+.ayudawp-blg-card--legal ul { list-style: disc; margin: 10px 0 14px 20px; max-width: 800px; }
+.ayudawp-blg-card--legal li { font-size: 13px; line-height: 1.6; margin-bottom: 6px; }

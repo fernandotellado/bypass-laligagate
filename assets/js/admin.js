@@ -95,7 +95,9 @@
 			ajaxPost( 'ayudawp_blg_check', false, function( r ) {
 				if ( r.success ) {
 					var type = 'success';
-					if ( r.data.blocked === 'SI' ) { type = 'danger'; }
+					/* No usable answer beats every other status: nothing was decided. */
+					if ( r.data.warning ) { type = 'warning'; }
+					else if ( r.data.blocked === 'SI' ) { type = 'danger'; }
 					else if ( r.data.bypass === 'SI' ) { type = 'warning'; }
 					showMsg( actionStatus, r.data.message, type );
 					updateStatus( r.data );

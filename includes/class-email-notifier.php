@@ -16,6 +16,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 class AyudaWP_BLG_Email_Notifier {
 
 	/**
+	 * Operators subject to the court order (Movistar, Vodafone, Orange,
+	 * Masmovil and DIGI). Used to tell a real ISP count from a legacy episode.
+	 */
+	const MAX_ISPS = 5;
+
+	/**
 	 * Send notification when proxy has been automatically disabled.
 	 *
 	 * Called only when bypass_active changes from 0 to 1 during a cron check.
@@ -110,9 +116,21 @@ class AyudaWP_BLG_Email_Notifier {
 				$start_str = wp_date( $fmt, intval( $ep['start'] ) );
 				$dur_str   = $this->format_duration( intval( $ep['duration'] ) );
 				$isps      = intval( $ep['isps_max'] );
+				$ips       = intval( $ep['ips_max'] ?? 0 );
 				$body     .= "- {$start_str} ({$dur_str})";
-				if ( $isps > 0 ) {
+				/*
+				 * Spain has five operators under the court order, so anything
+				 * above that is an episode logged before 1.5.0, when the TXT
+				 * source stored the IP count in this field. Show it as IPs,
+				 * which is what the number actually was.
+				 */
+				if ( $isps > 0 && $isps <= self::MAX_ISPS ) {
 					$body .= " | ISPs afectados: {$isps}";
+				} elseif ( $isps > self::MAX_ISPS && $ips <= 0 ) {
+					$ips = $isps;
+				}
+				if ( $ips > 0 ) {
+					$body .= " | IPs bloqueadas: {$ips}";
 				}
 				$body .= "\n";
 			}

@@ -1,0 +1,78 @@
+Bypass LaLigaGate — Full changelog
+
+For each release, see the entries below. The latest version is always at the top.
+The current release notes also live in readme.txt under "== Registro de cambios ==".
+
+= 1.5.0 =
+- Añadido: ajuste "Qué se considera un bloqueo", con dos modos. "Cualquier bloqueo en España" es el comportamiento de siempre y sigue siendo el valor por defecto, así que al actualizar no cambia nada. "Solo si bloquean las IPs de esta web" resuelve las IPs públicas de tus registros y solo desactiva el proxy cuando alguna aparece en las listas de hayahora.futbol, que es lo que evita quedarse sin CDN ni WAF cada fin de semana desde que empezó la liga.
+- Añadido: resolución de las IPs propias por DNS sobre HTTPS (Cloudflare y, si falla, Google), con gethostbynamel() como último recurso. Se usa DoH porque muchos alojamientos compartidos responden a tu propio dominio con la IP local de la máquina. Las IPs se resuelven solo mientras el proxy está activo y se guardan en caché seis horas, porque durante el bypass los registros apuntan al origen.
+- Añadido: si el modo "solo mi IP" no consigue resolver ninguna dirección, el plugin vuelve por su cuenta al modo global y lo indica en la fuente de la comprobación, antes que dar por buena una web accesible que no lo está.
+- Añadido: cuando los datos de hayahora.futbol llevan horas sin actualizarse, la comprobación se trata como un error y no como un "no hay bloqueos". Un fichero vacío servido por un generador parado habría restaurado el proxy en mitad de un partido. El margen son 3 horas y se puede cambiar con el filtro ayudawp_blg_max_data_age.
+- Añadido: la pantalla de ajustes y el botón "Comprobar ahora" avisan cuando una comprobación no ha podido concluir nada, explicando el motivo y que se mantiene el estado anterior. Antes las dos situaciones se veían igual desde fuera y significan cosas opuestas.
+- Añadido: cerrojo de ejecución, para que WP-Cron y el cron externo no puedan disparar dos comprobaciones a la vez y mandar cambios opuestos del mismo registro a Cloudflare. Caduca a los 5 minutos, así que un ciclo interrumpido no deja el plugin bloqueado.
+- Añadido: la pantalla de ajustes muestra el modo de detección, las IPs vigiladas, cuáles están bloqueadas y qué operadores las bloquean.
+- Añadido: los registros AAAA seleccionados se marcan como "sin verificar" en la tabla de DNS, porque hayahora.futbol solo publica direcciones IPv4 y no hay lista contra la que compararlos.
+- Añadido: sección legal al final de la pantalla de ajustes con los recursos de RootedCon, HackBCN, la Asociación Española de Startups y OONI.
+- Añadido: las respuestas de los endpoints se validan como IPv4 línea a línea, para que una página de error servida con un HTTP 200 no se interprete como una lista de miles de IPs bloqueadas.
+- Añadido: nueva opción ayudawp_blg_own_ips y nuevos filtros ayudawp_blg_isp_txt_url, ayudawp_blg_max_data_age, ayudawp_blg_json_cooldown, ayudawp_blg_txt_max_bytes y ayudawp_blg_json_max_bytes. El "ISPs mínimos" se limita a 5, que son los operadores bajo la orden judicial.
+- Mejorado: el recuento de operadores usa los cinco ficheros blocked-<isp>.txt en vez del JSON completo, que ya va por 2,7 MB. Los ajustes con "ISPs mínimos" mayor que 1 pasan de descargar 2,7 MB por comprobación a unos pocos KB. El JSON queda como respaldo si fallan los TXT.
+- Mejorado: el desglose por operador solo se descarga cuando decide algo (mínimo de ISPs mayor que 1) o cuando informa de algo útil (modo "solo mi IP"). En el caso habitual, sin bloqueos, la comprobación sigue siendo una sola petición mínima.
+- Mejorado: el respaldo JSON deja de poder repetirse en cada ciclo. Ese fichero es el histórico completo, solo crece, y decodificarlo cuesta unas once veces su tamaño en memoria, así que un fallo prolongado de los TXT significaba descargar y procesar 2,7 MB cada pocos minutos. Ahora se espera una hora entre usos, se limita el tamaño de la respuesta y no se decodifica si no cabe en la memoria disponible, en cuyo caso se mantiene el estado en vez de tumbar el cron con un error fatal.
+- Mejorado: si los TXT fallan por estar obsoletos no se recurre al JSON, porque lo escribe el mismo proceso y ya se sabe la respuesta.
+- Corregido: con la fuente TXT, el número de IPs bloqueadas se guardaba en el campo de "ISPs afectados", así que el resumen por email podía decir "ISPs afectados: 227". Ahora se guardan las dos cifras por separado y el email distingue una de otra. Los episodios anteriores a esta versión se muestran como IPs, que es lo que el número era en realidad.
+- Cambiado: AyudaWP_BLG_Block_Checker::check_status() recibe ahora un array de argumentos (min_isps, mode, own_ips) en lugar de un entero.
+
+= 1.4.0 =
+- Mejorado: la comprobación de bloqueos usa por defecto el endpoint ligero blocked-any.txt en lugar del JSON completo, reduciendo drásticamente el tráfico por chequeo. Si el TXT falla por cualquier motivo, vuelve automáticamente al JSON sin perder ningún ciclo.
+- Añadido: cuando el ajuste "Mínimo de ISPs" es mayor que 1 se sigue usando el JSON, ya que el TXT no expone el detalle por proveedor.
+- Añadido: indicación de la fuente consultada (txt / json / json+txt-fallback) en la fila "Última comprobación" de la pantalla de ajustes y en la respuesta del botón "Comprobar ahora", para auditar que el cambio funciona como se espera.
+- Añadido: filtros ayudawp_blg_txt_url, ayudawp_blg_json_url y ayudawp_blg_source para forzar endpoints o estrategia desde código.
+
+= 1.3.0 =
+- Añadido: resumen periódico por email (diario o semanal, opcional, desactivado por defecto) con el tiempo total que la web habría estado inaccesible si el plugin no hubiese desactivado el proxy durante los bloqueos. Configurable con hora de envío (por defecto 10:00) en la zona horaria del sitio, igual que las entradas programadas.
+- Añadido: historial interno de episodios de bloqueo (últimos 500) que alimenta el resumen. Se registra a partir de las transiciones del estado NO/SI de hayahora.futbol.
+
+= 1.2.1 =
+- Corregido: la tabla de registros DNS de los ajustes no reflejaba el nuevo estado del proxy tras un cambio automático del cron, quedando "atascada" en el estado anterior porque la caché se guardaba antes de aplicar los cambios. Ahora se actualiza tras los cambios y el botón "Comprobar ahora" también refresca la tabla en pantalla.
+
+= 1.2.0 =
+- Añadido: watchdog que reprograma la comprobación automática si por cualquier motivo desaparece del cron de WordPress.
+- Añadido: fila "Próxima comprobación" en la tarjeta de estado y aviso condicional cuando WP-Cron lleva retraso, con recomendación del cron externo del servidor. El aviso solo aparece si hay retraso real, manteniendo la interfaz limpia en funcionamiento normal.
+- Mejorado: el ejemplo de crontab usa el intervalo configurado en lugar de un valor fijo.
+- Corregido: el periodo de espera tras los bloqueos se mide ahora desde que terminan los bloqueos, no desde que empezó el bypass. Antes, si los bloqueos duraban más que el periodo de espera, el proxy se reactivaba sin ningún margen real.
+
+= 1.1.2 =
+- Mejorado: cambio de ISPs por defecto de 2 a 1 para que sea el usuario quien decida su umbral de riesgo, siendo por defecto el mínimo posible.
+
+= 1.1.1 =
+- Añadido: estilo de mensaje de aviso (warning) en la interfaz de administración.
+- Mejorado: los mensajes de estado del botón "Comprobar ahora" ahora usan colores según el contexto (rojo si hay bloqueos, ámbar en periodo de espera o forzado manual, verde si todo está bien).
+- Mejorado: el mensaje de forzar proxy OFF ahora se muestra en ámbar en vez de verde.
+
+= 1.1.0 =
+- Añadido: sección de opciones generales en la pantalla de ajustes.
+- Añadido: filtrado por número mínimo de ISPs con bloqueos para evitar falsos positivos por problemas de red de un solo operador (configurable, por defecto 2).
+- Añadido: opción para activar o desactivar los avisos por email (activa por defecto).
+- Añadido: opción para conservar los datos del plugin al borrarlo, para futuras reinstalaciones (borrado activo por defecto).
+- Corregido: sincronización de versión entre el plugin y el readme.
+
+= 1.0.2 =
+- Añadido: umbral filtrable mediante ayudawp_blg_stale_threshold (por defecto 6 horas).
+- Corregido: ahora se ignoran los registros de más de 6 horas en el JSON de hayahora.futbol, evitando así que el bypass permanezca activo indefinidamente.
+
+= 1.0.1 =
+- Corregido: la detección de bloqueos ahora analiza correctamente la estructura del JSON de hayahora.futbol con arrays indexados numéricamente que contengan objetos de IPs con cambios de estado.
+
+= 1.0.0 =
+- Versión inicial.
+- Monitorización automática de hayahora.futbol en modo preventivo.
+- Gestión de registros DNS de Cloudflare (A, AAAA, CNAME).
+- Soporte para Global API Key y API Token.
+- Control manual con botones de forzar proxy OFF / restaurar proxy ON.
+- Forzado manual respetado por el cron (no sobreescribe).
+- Notificaciones por email al desactivar/reactivar el proxy automáticamente.
+- Periodo de espera configurable tras desactivar el proxy.
+- Endpoint para cron externo con token de seguridad.
+- Restauración automática del proxy al desactivar el plugin.
+- Aviso descartable tras activar con enlace a los ajustes.
+- Enlace "Ajustes" en la lista de plugins.

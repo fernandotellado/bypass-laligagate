@@ -36,7 +36,7 @@ class AyudaWP_BLG_Ajax_Handler {
 	 */
 	private function get_config_with_form_creds() {
 		$cfg = ayudawp_blg_get_config();
-		// phpcs:disable WordPress.Security.NonceVerification.Missing
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- todas las llamadas pasan antes por verify_request() (class-ajax-handler.php:21), que ejecuta check_ajax_referer() y current_user_can().
 		if ( ! empty( $_POST['cf_api_key'] ) ) {
 			$cfg['auth_type']  = isset( $_POST['auth_type'] ) ? sanitize_text_field( wp_unslash( $_POST['auth_type'] ) ) : $cfg['auth_type'];
 			$cfg['cf_email']   = isset( $_POST['cf_email'] ) ? sanitize_email( wp_unslash( $_POST['cf_email'] ) ) : $cfg['cf_email'];
@@ -167,10 +167,40 @@ class AyudaWP_BLG_Ajax_Handler {
 		if ( ! empty( $state['manual_override'] ) ) {
 			$msg = 'Forzado manual activo. ';
 		}
+		$own_mode = ( 'own_ip' === $cfg['detection_mode'] );
+
+		/*
+		 * An unusable answer is not a state: report it as such instead of
+		 * repeating the last known status, which would read as if the check had
+		 * just confirmed it.
+		 */
+		if ( ! empty( $state['last_error'] ) ) {
+			$msg .= $state['last_error'] . ' Se mantiene el estado anterior.';
+			wp_send_json_success( array(
+				'message'    => $msg,
+				'blocked'    => $state['last_status'],
+				'bypass'     => ( ! empty( $state['bypass_active'] ) || ! empty( $state['manual_override'] ) ) ? 'SI' : 'NO',
+				'lastCheck'  => $state['last_check'],
+				'lastSource' => $state['last_source'] ?? '',
+				'nextCheck'  => $diag['next_human'],
+				'warning'    => 1,
+			) );
+		}
+
 		if ( 'SI' === $state['last_status'] ) {
-			$msg .= 'Hay bloqueos activos ahora mismo.';
+			$msg .= $own_mode
+				? 'Las IPs de esta web están bloqueadas ahora mismo.'
+				: 'Hay bloqueos activos ahora mismo.';
+			if ( ! empty( $state['last_matched'] ) ) {
+				$msg .= ' IPs afectadas: ' . implode( ', ', (array) $state['last_matched'] ) . '.';
+			}
+			if ( ! empty( $state['last_isp_names'] ) ) {
+				$msg .= ' Operadores: ' . implode( ', ', (array) $state['last_isp_names'] ) . '.';
+			}
 		} else {
-			$msg .= 'No hay bloqueos activos.';
+			$msg .= $own_mode
+				? 'Las IPs de esta web no están en ninguna lista de bloqueo.'
+				: 'No hay bloqueos activos.';
 			if ( ! empty( $state['bypass_active'] ) && empty( $state['manual_override'] ) && intval( $state['blocks_ended_at'] ) > 0 ) {
 				$remaining = max( 0, ( intval( $cfg['cooldown'] ) * 60 ) - ( time() - intval( $state['blocks_ended_at'] ) ) );
 				if ( $remaining > 0 ) {

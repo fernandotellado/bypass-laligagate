@@ -11,6 +11,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class AyudaWP_BLG_Cron_Manager {
 
+	/**
+	 * Option used as a run lock, and how long it survives a process that dies
+	 * without releasing it. Anything longer than one HTTP round trip plus the
+	 * Cloudflare updates is enough; five minutes is comfortably past that and
+	 * still shorter than the smallest allowed check interval.
+	 */
+	const LOCK_OPTION = 'ayudawp_blg_run_lock';
+	const LOCK_TTL    = 5 * MINUTE_IN_SECONDS;
+
 	public function register_hooks() {
 		add_filter( 'cron_schedules', array( $this, 'add_custom_interval' ) );
 		add_action( AYUDAWP_BLG_CRON_HOOK, array( $this, 'run_check' ) );
@@ -64,20 +73,121 @@ class AyudaWP_BLG_Cron_Manager {
 			return;
 		}
 
+		/*
+		 * WP-Cron and the external cron can fire within milliseconds of each
+		 * other, and so can two visits that both trigger wp-cron.php. Without a
+		 * lock each one reads the DNS state, decides, and PUTs, so two runs can
+		 * send opposite proxy changes for the same record and the last writer
+		 * wins at random. It also caps what a leaked cron token can do: the
+		 * requests still arrive, but only one every LOCK_TTL does any work.
+		 */
+		if ( ! $this->acquire_lock() ) {
+			return;
+		}
+
+		try {
+			$this->do_check( $cfg, $state, $api );
+		} finally {
+			$this->release_lock();
+		}
+	}
+
+	/**
+	 * Take the run lock, or report that somebody else holds it.
+	 *
+	 * add_option() is the atomic primitive here: it INSERTs and returns false
+	 * when the row already exists, so two concurrent runs cannot both win. The
+	 * stored value is the expiry, which is what lets a lock left behind by a
+	 * killed process be reclaimed instead of blocking the plugin forever.
+	 *
+	 * @return bool Whether this process may run.
+	 */
+	private function acquire_lock() {
+		$now = time();
+
+		if ( add_option( self::LOCK_OPTION, $now + self::LOCK_TTL, '', false ) ) {
+			return true;
+		}
+
+		$expires = (int) get_option( self::LOCK_OPTION, 0 );
+		if ( $expires > $now ) {
+			return false;
+		}
+
+		/* Stale lock from a run that died. Take it over. */
+		update_option( self::LOCK_OPTION, $now + self::LOCK_TTL, false );
+		return true;
+	}
+
+	private function release_lock() {
+		delete_option( self::LOCK_OPTION );
+	}
+
+	/**
+	 * The check itself. Only ever called through run_check(), which holds the
+	 * lock for the whole of it.
+	 *
+	 * @param array                      $cfg   Plugin config.
+	 * @param array                      $state Bypass state.
+	 * @param AyudaWP_BLG_Cloudflare_API  $api   Configured API client.
+	 */
+	private function do_check( $cfg, $state, $api ) {
+
 		$prev_status = isset( $state['last_status'] ) ? $state['last_status'] : 'NO';
 
-		$checker = new AyudaWP_BLG_Block_Checker();
-		$status  = $checker->check_status( intval( $cfg['min_isps'] ) );
+		/*
+		 * DNS first: the "solo mi IP" mode needs to know which addresses the
+		 * world sees for this site, and that can only be resolved while the
+		 * records are still proxied. Doing it here also means the run reuses a
+		 * single fetch for both the resolution and the later proxy switch.
+		 */
+		$fresh = $api->fetch_dns_records();
 
-		$now                    = time();
-		$state['last_check']    = current_time( 'mysql' );
-		$state['last_check_ts'] = $now;
-		$state['last_source']   = isset( $status['source'] ) ? (string) $status['source'] : '';
+		$own_ips = array();
+		if ( 'own_ip' === $cfg['detection_mode'] ) {
+			/*
+			 * Only the resolution falls back to the cached records. The proxy
+			 * loop below keeps working off a live read, because acting on a
+			 * stale 'proxied' flag could make it skip a change that is due.
+			 */
+			$resolver = new AyudaWP_BLG_Own_IP_Resolver();
+			$ip_cache = $resolver->maybe_refresh(
+				! empty( $fresh ) ? $fresh : ayudawp_blg_get_dns_cache(),
+				$cfg['selected_records']
+			);
+			$own_ips = isset( $ip_cache['ips'] ) ? (array) $ip_cache['ips'] : array();
+		}
+
+		$checker = new AyudaWP_BLG_Block_Checker();
+		$status  = $checker->check_status( array(
+			'min_isps' => intval( $cfg['min_isps'] ),
+			'mode'     => $cfg['detection_mode'],
+			'own_ips'  => $own_ips,
+		) );
+
+		$now                     = time();
+		$state['last_check']     = current_time( 'mysql' );
+		$state['last_check_ts']  = $now;
+		$state['last_source']    = isset( $status['source'] ) ? (string) $status['source'] : '';
+		$state['last_mode']      = isset( $status['mode'] ) ? (string) $status['mode'] : 'global';
+		$state['last_isp_names'] = isset( $status['isp_names'] ) ? (array) $status['isp_names'] : array();
+		$state['last_matched']   = isset( $status['matched'] ) ? (array) $status['matched'] : array();
 
 		if ( ! empty( $status['error'] ) ) {
+			/*
+			 * No usable answer: keep whatever state we had. Surfacing the reason
+			 * matters because the two silences look identical from the outside
+			 * ("last check: 20 minutes ago") and mean opposite things: a network
+			 * blip fixes itself, a source that stopped publishing needs a human.
+			 */
+			$state['last_error']    = (string) $status['error'];
+			$state['last_error_ts'] = $now;
 			ayudawp_blg_save_state( $state );
 			return;
 		}
+
+		$state['last_error']    = '';
+		$state['last_error_ts'] = 0;
 
 		$blocks_active        = $status['blocked'];
 		$state['last_status'] = $blocks_active ? 'SI' : 'NO';
@@ -87,7 +197,13 @@ class AyudaWP_BLG_Cron_Manager {
 		 * regardless of manual override: the log tracks reality (what La Liga
 		 * is doing), not whether the proxy was actually flipped.
 		 */
-		$this->record_block_transition( $prev_status, $blocks_active, intval( $status['blocked_isps'] ?? 0 ), $now );
+		$this->record_block_transition(
+			$prev_status,
+			$blocks_active,
+			intval( $status['blocked_isps'] ?? 0 ),
+			intval( $status['blocked_ips'] ?? 0 ),
+			$now
+		);
 
 		/* Manual override: only update info, don't touch proxy */
 		if ( ! empty( $state['manual_override'] ) ) {
@@ -123,13 +239,12 @@ class AyudaWP_BLG_Cron_Manager {
 		$desired_proxy = ! $should_disable;
 
 		/*
-		 * Fetch DNS once to know current state, apply changes, then re-fetch
-		 * only if we actually changed anything so the admin cache reflects
-		 * the post-update state. Otherwise the DNS table in the settings
-		 * page would stay stuck on the pre-change state until somebody
-		 * pressed "Probar conexión y cargar DNS" again.
+		 * $fresh was fetched at the top of the run. Apply the changes and
+		 * re-fetch only if we actually changed anything, so the admin cache
+		 * reflects the post-update state. Otherwise the DNS table in the
+		 * settings page would stay stuck on the pre-change state until
+		 * somebody pressed "Probar conexión y cargar DNS" again.
 		 */
-		$fresh   = $api->fetch_dns_records();
 		$changed = false;
 
 		foreach ( $cfg['selected_records'] as $rid ) {
@@ -186,13 +301,21 @@ class AyudaWP_BLG_Cron_Manager {
 		}
 	}
 
+	/**
+	 * Entry point for the optional server-side cron.
+	 *
+	 * This URL is called by crontab or an external monitor, never from a
+	 * browser session, so there is no nonce to carry: the shared secret in
+	 * cron_secret is the whole authentication, compared with hash_equals()
+	 * below before anything runs.
+	 */
 	public function maybe_process_external_cron() {
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- endpoint de cron externo, autenticado con el token comparado con hash_equals() unas lineas mas abajo en este mismo metodo.
 		if ( ! isset( $_GET['bypass_blg_cron'] ) ) {
 			return;
 		}
 		$cfg = ayudawp_blg_get_config();
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- idem: es el propio token que se valida en la linea siguiente.
 		$token = isset( $_GET['token'] ) ? sanitize_text_field( wp_unslash( $_GET['token'] ) ) : '';
 		if ( empty( $cfg['cron_secret'] ) || ! hash_equals( $cfg['cron_secret'], $token ) ) {
 			wp_die( 'Token no válido', 'Acceso denegado', array( 'response' => 403 ) );
@@ -219,9 +342,20 @@ class AyudaWP_BLG_Cron_Manager {
 	 *
 	 *   NO -> SI: open a new episode at $now
 	 *   SI -> NO: close the latest open episode at $now
-	 *   SI -> SI: bump isps_max on the open episode if higher
+	 *   SI -> SI: bump the peak counters on the open episode if higher
+	 *
+	 * Both counters are kept because they answer different questions and each
+	 * can legitimately be zero: isps_max is only known when the per-ISP files
+	 * were consulted, and ips_max is unavailable when the JSON fallback ran
+	 * without a usable breakdown.
+	 *
+	 * @param string $prev_status   'SI' or 'NO' from the previous run.
+	 * @param bool   $blocks_active Whether blocks are active now.
+	 * @param int    $blocked_isps  Operators blocking (0 = not determined).
+	 * @param int    $blocked_ips   Blocked IPs that matter for this site.
+	 * @param int    $now           Current timestamp.
 	 */
-	private function record_block_transition( $prev_status, $blocks_active, $blocked_isps, $now ) {
+	private function record_block_transition( $prev_status, $blocks_active, $blocked_isps, $blocked_ips, $now ) {
 		$was_blocked = ( 'SI' === $prev_status );
 
 		if ( ! $was_blocked && $blocks_active ) {
@@ -229,6 +363,7 @@ class AyudaWP_BLG_Cron_Manager {
 				'start'    => $now,
 				'end'      => 0,
 				'isps_max' => $blocked_isps,
+				'ips_max'  => $blocked_ips,
 			) );
 			return;
 		}
@@ -247,20 +382,30 @@ class AyudaWP_BLG_Cron_Manager {
 				'start'    => $now - MINUTE_IN_SECONDS,
 				'end'      => $now,
 				'isps_max' => $blocked_isps,
+				'ips_max'  => $blocked_ips,
 			) );
 			return;
 		}
 
-		if ( $was_blocked && $blocks_active && $blocked_isps > 0 ) {
+		if ( $was_blocked && $blocks_active ) {
 			$log = ayudawp_blg_get_block_log();
 			for ( $i = count( $log ) - 1; $i >= 0; $i-- ) {
-				if ( empty( $log[ $i ]['end'] ) ) {
-					if ( $blocked_isps > intval( $log[ $i ]['isps_max'] ?? 0 ) ) {
-						$log[ $i ]['isps_max'] = $blocked_isps;
-						ayudawp_blg_save_block_log( $log );
-					}
-					return;
+				if ( ! empty( $log[ $i ]['end'] ) ) {
+					continue;
 				}
+				$dirty = false;
+				if ( $blocked_isps > intval( $log[ $i ]['isps_max'] ?? 0 ) ) {
+					$log[ $i ]['isps_max'] = $blocked_isps;
+					$dirty                 = true;
+				}
+				if ( $blocked_ips > intval( $log[ $i ]['ips_max'] ?? 0 ) ) {
+					$log[ $i ]['ips_max'] = $blocked_ips;
+					$dirty                = true;
+				}
+				if ( $dirty ) {
+					ayudawp_blg_save_block_log( $log );
+				}
+				return;
 			}
 		}
 	}
@@ -379,6 +524,7 @@ class AyudaWP_BLG_Cron_Manager {
 				'end'      => $clip_end,
 				'duration' => $dur,
 				'isps_max' => intval( $ep['isps_max'] ?? 0 ),
+				'ips_max'  => intval( $ep['ips_max'] ?? 0 ),
 			);
 		}
 

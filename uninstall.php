@@ -9,14 +9,15 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 	exit;
 }
 
-$config = get_option( 'ayudawp_blg_settings', array() );
+$ayudawp_blg_config = get_option( 'ayudawp_blg_settings', array() );
 
 /* Only delete data if the user opted in (default: yes) */
-$delete = isset( $config['delete_data'] ) ? (int) $config['delete_data'] : 1;
+$ayudawp_blg_delete = isset( $ayudawp_blg_config['delete_data'] ) ? (int) $ayudawp_blg_config['delete_data'] : 1;
 
-if ( $delete ) {
+if ( $ayudawp_blg_delete ) {
 	delete_option( 'ayudawp_blg_settings' );
 	delete_option( 'ayudawp_blg_dns_cache' );
 	delete_option( 'ayudawp_blg_bypass_state' );
 	delete_option( 'ayudawp_blg_block_log' );
+	delete_option( 'ayudawp_blg_own_ips' );
 }

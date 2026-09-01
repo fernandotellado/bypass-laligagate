@@ -3,9 +3,24 @@
  * Block status checker.
  *
  * Resolves whether there are active football-related IP blocks in Spain by
- * consulting hayahora.futbol. Prefers the lightweight TXT endpoint
- * (blocked-any.txt, ~150 B) and falls back to the full JSON (~8 MB) when the
- * TXT is unavailable or when the user requires per-ISP granularity (min_isps>1).
+ * consulting hayahora.futbol.
+ *
+ * The plain-text endpoints are the primary source: blocked-any.txt is the
+ * union of every ISP and there is one file per ISP, so a full per-ISP
+ * breakdown costs six small requests. Empty it is 0 bytes; at the busiest
+ * moment measured so far (22 Aug 2026, 886 addresses blocked at once) it would
+ * be around 13 KB. The historical JSON is a fallback only: it grows without
+ * bound, already weighs 2.7 MB, and decoding it costs about eleven times that
+ * in RAM.
+ *
+ * Two things this class refuses to do, both because a wrong "no blocks" takes
+ * the site down while a wrong "blocked" only costs the CDN:
+ *
+ *   - Believe a stale source. An empty list from a generator that stopped
+ *     hours ago is silence, not an answer, so it is reported as an error and
+ *     the caller keeps the current state.
+ *   - Decode the JSON when there is no room for it. Better an error the plugin
+ *     handles than a fatal that kills the cron run halfway through.
  *
  * @package Bypass_LaLigaGate
  */
@@ -20,142 +35,402 @@ if ( ! defined( 'ABSPATH' ) ) {
 class AyudaWP_BLG_Block_Checker {
 
 	/**
-	 * Remote JSON endpoint URL (full dataset, ~8 MB).
+	 * Transient that keeps the JSON fallback from running on every cycle.
+	 */
+	const JSON_COOLDOWN_KEY = 'ayudawp_blg_json_cooldown';
+
+	/**
+	 * How much bigger than the raw JSON the decoded arrays are. Measured on
+	 * PHP 8.5 with the 30 Aug 2026 dataset: 2.69 MB of text became 28.7 MB of
+	 * arrays. Rounded up, because being wrong the other way is a fatal error.
+	 */
+	const JSON_DECODE_FACTOR = 12;
+
+	/**
+	 * Remote JSON endpoint URL (full history, 2.7 MB on 30 Aug 2026 and growing).
 	 *
 	 * @var string
 	 */
 	private $json_url = 'https://hayahora.futbol/estado/data.json';
 
 	/**
-	 * Remote TXT endpoint URL (list of blocked IPs, one per line).
+	 * Base URL for the plain-text endpoints.
 	 *
 	 * @var string
 	 */
-	private $txt_url = 'https://hayahora.futbol/estado/blocked-any.txt';
+	private $txt_base = 'https://hayahora.futbol/estado/';
 
 	/**
-	 * Check if there are active blocks filtered by ISP count.
+	 * Per-ISP TXT files, slug => label as hayahora.futbol names them.
 	 *
-	 * Strategy:
-	 *   - min_isps == 1 → try TXT first (cheap), fall back to JSON on error.
-	 *   - min_isps  > 1 → use JSON (TXT lacks per-ISP detail).
-	 *
-	 * Both endpoints can be overridden with the 'ayudawp_blg_txt_url' and
-	 * 'ayudawp_blg_json_url' filters; the source preference can be forced
-	 * with 'ayudawp_blg_source' returning 'txt' or 'json'.
-	 *
-	 * @param int $min_isps Minimum ISPs with blocks to trigger (default 1).
-	 * @return array{blocked: bool, last_update: string, error: string, blocked_isps: int, source: string}
+	 * @var array
 	 */
-	public function check_status( $min_isps = 1 ) {
-		$min_isps = max( 1, intval( $min_isps ) );
-
-		$default_source = ( 1 === $min_isps ) ? 'txt' : 'json';
-		$source         = (string) apply_filters( 'ayudawp_blg_source', $default_source, $min_isps );
-
-		if ( 'txt' === $source ) {
-			$result = $this->check_via_txt();
-			if ( '' === $result['error'] ) {
-				return $result;
-			}
-			/* TXT failed: fall back to JSON so a hosting glitch doesn't blind us. */
-			$result            = $this->check_via_json( $min_isps );
-			$result['source']  = $result['source'] . '+txt-fallback';
-			return $result;
-		}
-
-		return $this->check_via_json( $min_isps );
-	}
+	private $isp_files = array(
+		'movistar' => 'Movistar',
+		'vodafone' => 'Vodafone',
+		'orange'   => 'Orange',
+		'masmovil' => 'Masmovil',
+		'digi'     => 'DIGI',
+	);
 
 	/**
-	 * Lightweight check using the plain-text endpoint.
+	 * Check whether there are blocks that should trigger the bypass.
 	 *
-	 * Each non-empty line is a blocked IP. We don't validate the IP format
-	 * strictly (the upstream owns that); we only require that the body parses
-	 * into ≥1 line for the result to count as "blocked".
+	 * Two detection modes:
 	 *
-	 * @return array{blocked: bool, last_update: string, error: string, blocked_isps: int, source: string}
+	 *   global — any blocked IP anywhere counts. This is what the plugin has
+	 *            always done and it errs heavily on the safe side: since the
+	 *            season started there are blocked IPs during most match
+	 *            windows, so the bypass stays on for hours whether or not this
+	 *            particular site is among the collateral damage.
+	 *
+	 *   own_ip — only blocks hitting one of this site's own public IPs count.
+	 *            Precise, but it depends on those IPs being known: the caller
+	 *            passes them in and we fall back to global detection when the
+	 *            list is empty, rather than reporting a comfortable "no blocks"
+	 *            we cannot back up.
+	 *
+	 * The per-ISP breakdown is only fetched when it changes an outcome
+	 * (min_isps > 1) or when it is worth showing (own_ip mode, where knowing
+	 * which operators block you is the actionable part).
+	 *
+	 * Filters, all of them optional:
+	 *   ayudawp_blg_txt_url        blocked-any.txt endpoint
+	 *   ayudawp_blg_isp_txt_url    per-ISP endpoint, receives the slug
+	 *   ayudawp_blg_json_url       JSON fallback endpoint
+	 *   ayudawp_blg_source         force 'txt' or 'json'
+	 *   ayudawp_blg_max_data_age   how old the data may be, 3 h by default,
+	 *                              0 to accept any age
+	 *   ayudawp_blg_json_cooldown  minimum gap between JSON fallbacks, 1 h
+	 *   ayudawp_blg_txt_max_bytes  hard cap on a TXT response, 1 MB
+	 *   ayudawp_blg_json_max_bytes hard cap on the JSON response, 12 MB
+	 *
+	 * @param array $args {
+	 *     @type int    $min_isps Minimum ISPs with blocks to trigger. Default 1.
+	 *     @type string $mode     'global' or 'own_ip'. Default 'global'.
+	 *     @type array  $own_ips  This site's public IPv4 addresses.
+	 * }
+	 * @return array{blocked: bool, last_update: string, last_update_ts: int, error: string, error_kind: string, blocked_isps: int, blocked_ips: int, isp_names: array, matched: array, mode: string, source: string}
 	 */
-	private function check_via_txt() {
-		$result = array(
-			'blocked'      => false,
-			'last_update'  => '',
-			'error'        => '',
-			'blocked_isps' => 0,
-			'source'       => 'txt',
-		);
-
-		$url      = (string) apply_filters( 'ayudawp_blg_txt_url', $this->txt_url );
-		$response = wp_remote_get( $url, array(
-			'timeout'     => 10,
-			'redirection' => 3,
-			'user-agent'  => 'BypassLaLigaGate/' . AYUDAWP_BLG_VERSION . '; ' . home_url( '/' ),
+	public function check_status( $args = array() ) {
+		$args = wp_parse_args( $args, array(
+			'min_isps' => 1,
+			'mode'     => 'global',
+			'own_ips'  => array(),
 		) );
 
-		if ( is_wp_error( $response ) ) {
-			$result['error'] = $response->get_error_message();
-			return $result;
+		$min_isps = max( 1, intval( $args['min_isps'] ) );
+		$own_ips  = is_array( $args['own_ips'] ) ? array_values( array_unique( $args['own_ips'] ) ) : array();
+		$degraded = false;
+
+		$mode = ( 'own_ip' === $args['mode'] ) ? 'own_ip' : 'global';
+		if ( 'own_ip' === $mode && empty( $own_ips ) ) {
+			/* Asked for precision we cannot deliver: better a false alarm than a missed block. */
+			$mode     = 'global';
+			$degraded = true;
 		}
 
-		$code = wp_remote_retrieve_response_code( $response );
-		if ( 200 !== $code ) {
-			$result['error'] = 'HTTP ' . $code;
-			return $result;
-		}
+		$source = (string) apply_filters( 'ayudawp_blg_source', 'txt', $min_isps );
 
-		$body  = (string) wp_remote_retrieve_body( $response );
-		$lines = preg_split( '/\r\n|\r|\n/', trim( $body ) );
-		$ips   = array();
-		if ( is_array( $lines ) ) {
-			foreach ( $lines as $line ) {
-				$line = trim( $line );
-				if ( '' !== $line ) {
-					$ips[] = $line;
-				}
+		if ( 'json' === $source ) {
+			$result = $this->check_via_json( $min_isps, $mode, $own_ips );
+		} else {
+			$result = $this->check_via_txt( $min_isps, $mode, $own_ips );
+			if ( '' !== $result['error'] && 'stale' !== $result['error_kind'] ) {
+				/*
+				 * A hosting glitch on the TXT files should not blind us. Stale
+				 * data is a different matter: the same process writes both
+				 * formats, so if the TXT stopped the JSON stopped too, and it
+				 * would cost 2.7 MB to find that out.
+				 */
+				$result           = $this->check_via_json( $min_isps, $mode, $own_ips );
+				$result['source'] = $result['source'] . '+txt-fallback';
 			}
 		}
 
-		$result['blocked'] = ( count( $ips ) > 0 );
-		/*
-		 * The TXT doesn't break results down by ISP. We expose the IP count as
-		 * blocked_isps so the episode log still records "how bad it got",
-		 * accepting that the metric is now "max blocked IPs", not "max ISPs".
-		 */
-		$result['blocked_isps'] = count( $ips );
-
-		$last_modified = wp_remote_retrieve_header( $response, 'last-modified' );
-		if ( ! empty( $last_modified ) ) {
-			$ts = strtotime( $last_modified );
-			if ( false !== $ts ) {
-				$result['last_update'] = gmdate( 'c', $ts );
-			}
+		if ( $degraded ) {
+			$result['source'] = $result['source'] . '+sin-ips';
 		}
 
 		return $result;
 	}
 
 	/**
-	 * Full check against the JSON endpoint. Used as fallback or when the user
-	 * needs min_isps > 1 (TXT can't tell us per-ISP detail).
+	 * Empty result skeleton.
 	 *
-	 * @param int $min_isps Minimum ISPs with blocks to trigger.
-	 * @return array{blocked: bool, last_update: string, error: string, blocked_isps: int, source: string}
+	 * @param string $mode   Detection mode in effect.
+	 * @param string $source Source label.
+	 * @return array
 	 */
-	private function check_via_json( $min_isps ) {
-		$result = array(
-			'blocked'      => false,
-			'last_update'  => '',
-			'error'        => '',
-			'blocked_isps' => 0,
-			'source'       => 'json',
+	private function blank_result( $mode, $source ) {
+		return array(
+			'blocked'        => false,
+			'last_update'    => '',
+			'last_update_ts' => 0,
+			'error'          => '',
+			'error_kind'     => '',
+			'blocked_isps'   => 0,
+			'blocked_ips'    => 0,
+			'isp_names'      => array(),
+			'matched'        => array(),
+			'mode'           => $mode,
+			'source'         => $source,
 		);
+	}
+
+	/**
+	 * Check using the plain-text endpoints.
+	 *
+	 * blocked-any.txt is the union of every operator, so an IP missing from it
+	 * is blocked nowhere and there is no reason to fetch the five per-ISP
+	 * files. That short-circuit keeps the common case at a single 3 KB request.
+	 *
+	 * @param int    $min_isps Minimum ISPs with blocks to trigger.
+	 * @param string $mode     'global' or 'own_ip'.
+	 * @param array  $own_ips  This site's public IPv4 addresses.
+	 * @return array
+	 */
+	private function check_via_txt( $min_isps, $mode, $own_ips ) {
+		$result = $this->blank_result( $mode, 'txt' );
+
+		$url   = (string) apply_filters( 'ayudawp_blg_txt_url', $this->txt_base . 'blocked-any.txt' );
+		$fetch = $this->fetch_ip_list( $url );
+
+		if ( '' !== $fetch['error'] ) {
+			$result['error'] = $fetch['error'];
+			return $result;
+		}
+
+		$result['last_update']    = $fetch['last_update'];
+		$result['last_update_ts'] = $fetch['last_update_ts'];
+
+		$stale = $this->staleness_error( $fetch['last_update_ts'] );
+		if ( '' !== $stale ) {
+			$result['error']      = $stale;
+			$result['error_kind'] = 'stale';
+			return $result;
+		}
+
+		/* No Last-Modified to judge by. Not knowing the age is not the same as
+		   knowing the data is fresh, so say so instead of staying quiet. */
+		$undated = ( 0 === $fetch['last_update_ts'] );
+		if ( $undated ) {
+			$result['source'] = 'txt (sin fecha)';
+		}
+
+		$candidates = ( 'own_ip' === $mode )
+			? array_values( array_intersect( $own_ips, $fetch['ips'] ) )
+			: $fetch['ips'];
+
+		if ( empty( $candidates ) ) {
+			return $result;
+		}
+
+		$result['blocked_ips'] = count( $candidates );
+		if ( 'own_ip' === $mode ) {
+			$result['matched'] = $candidates;
+		}
+
+		/* Only pay for the per-ISP breakdown when it decides something or informs the user. */
+		if ( $min_isps <= 1 && 'own_ip' !== $mode ) {
+			$result['blocked'] = true;
+			return $result;
+		}
+
+		$isps = $this->count_isps_via_txt( $candidates, $mode );
+
+		if ( ! $isps['ok'] ) {
+			/*
+			 * The union says there are blocks but the breakdown is unavailable.
+			 * Treating that as "not blocked" would drop the bypass during a real
+			 * block, so we trigger and flag the uncertainty in the source label.
+			 */
+			$result['blocked'] = true;
+			$result['source']  = 'txt (ISPs sin determinar)' . ( $undated ? ' (sin fecha)' : '' );
+			return $result;
+		}
+
+		$result['blocked_isps'] = $isps['count'];
+		$result['isp_names']    = $isps['names'];
+		$result['blocked']      = ( $isps['count'] >= $min_isps );
+
+		return $result;
+	}
+
+	/**
+	 * Decide whether a Last-Modified is too old to be treated as an answer.
+	 *
+	 * hayahora.futbol regenerates these files continuously (minutes apart, with
+	 * or without blocks), so a timestamp hours old means the generator stopped,
+	 * not that Spain went quiet. Believing it would restore the proxy in the
+	 * middle of a match, which is the one failure this plugin exists to avoid.
+	 *
+	 * A missing header is NOT treated as stale: not being able to tell is not
+	 * evidence of anything, and turning it into an error would take the plugin
+	 * offline the day the endpoints move behind a CDN that drops the header.
+	 *
+	 * @param int $ts Unix timestamp from Last-Modified, 0 when absent.
+	 * @return string Error message, empty when the data is usable.
+	 */
+	private function staleness_error( $ts ) {
+		if ( $ts <= 0 ) {
+			return '';
+		}
+
+		$max_age = (int) apply_filters( 'ayudawp_blg_max_data_age', 3 * HOUR_IN_SECONDS );
+		if ( $max_age <= 0 ) {
+			return '';
+		}
+
+		$age = time() - $ts;
+		if ( $age <= $max_age ) {
+			return '';
+		}
+
+		return sprintf(
+			'Los datos de hayahora.futbol no se actualizan desde hace %s, no se puede saber si hay bloqueos.',
+			human_time_diff( $ts, time() )
+		);
+	}
+
+	/**
+	 * Count how many operators are blocking, fetching one TXT file per ISP.
+	 *
+	 * @param array  $candidates IPs that matter (all blocked IPs, or just ours).
+	 * @param string $mode       'global' or 'own_ip'.
+	 * @return array{count: int, names: array, ok: bool}
+	 */
+	private function count_isps_via_txt( $candidates, $mode ) {
+		$names  = array();
+		$any_ok = false;
+
+		foreach ( $this->isp_files as $slug => $label ) {
+			$url   = (string) apply_filters( 'ayudawp_blg_isp_txt_url', $this->txt_base . 'blocked-' . $slug . '.txt', $slug );
+			$fetch = $this->fetch_ip_list( $url );
+
+			if ( '' !== $fetch['error'] ) {
+				continue;
+			}
+
+			$any_ok = true;
+
+			$hits = ( 'own_ip' === $mode )
+				? array_intersect( $candidates, $fetch['ips'] )
+				: $fetch['ips'];
+
+			if ( ! empty( $hits ) ) {
+				$names[] = $label;
+			}
+		}
+
+		return array(
+			'count' => count( $names ),
+			'names' => $names,
+			'ok'    => $any_ok,
+		);
+	}
+
+	/**
+	 * Fetch one TXT endpoint and parse it into a list of IPs.
+	 *
+	 * Lines are validated as IPv4 because a hosting error page served with a
+	 * 200 would otherwise parse as a very long list of blocked addresses.
+	 *
+	 * @param string $url Endpoint URL.
+	 * @return array{ips: array, last_update: string, last_update_ts: int, error: string}
+	 */
+	private function fetch_ip_list( $url ) {
+		$out = array(
+			'ips'            => array(),
+			'last_update'    => '',
+			'last_update_ts' => 0,
+			'error'          => '',
+		);
+
+		$response = wp_remote_get( $url, array(
+			'timeout'             => 10,
+			'redirection'         => 3,
+			/* The busiest moment measured so far would be ~13 KB; a megabyte is
+			   already far past anything these files can legitimately be. */
+			'limit_response_size' => (int) apply_filters( 'ayudawp_blg_txt_max_bytes', MB_IN_BYTES ),
+			'user-agent'          => 'BypassLaLigaGate/' . AYUDAWP_BLG_VERSION . '; ' . home_url( '/' ),
+		) );
+
+		if ( is_wp_error( $response ) ) {
+			$out['error'] = $response->get_error_message();
+			return $out;
+		}
+
+		$code = wp_remote_retrieve_response_code( $response );
+		if ( 200 !== $code ) {
+			$out['error'] = 'HTTP ' . $code;
+			return $out;
+		}
+
+		$body  = (string) wp_remote_retrieve_body( $response );
+		$lines = preg_split( '/\r\n|\r|\n/', trim( $body ) );
+
+		if ( is_array( $lines ) ) {
+			foreach ( $lines as $line ) {
+				$line = trim( $line );
+				if ( '' !== $line && filter_var( $line, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 ) ) {
+					$out['ips'][] = $line;
+				}
+			}
+		}
+
+		$last_modified = wp_remote_retrieve_header( $response, 'last-modified' );
+		if ( ! empty( $last_modified ) ) {
+			$ts = strtotime( $last_modified );
+			if ( false !== $ts ) {
+				$out['last_update']    = gmdate( 'c', $ts );
+				$out['last_update_ts'] = (int) $ts;
+			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Full check against the JSON endpoint. Fallback only.
+	 *
+	 * This file is the whole history and it only grows: measured at 2.7 MB on
+	 * 30 Aug 2026, 11.970 entries, and json_decode() turns that into about
+	 * 29 MB of PHP arrays, an eleven-fold expansion. On a shared host with a
+	 * 64 MB limit and a normal plugin stack already loaded, that is a fatal
+	 * error inside a cron run, which is a worse outcome than not knowing.
+	 *
+	 * Hence three guards that the TXT path does not need: a hard response-size
+	 * limit, a memory check before decoding, and a cooldown so a persistent TXT
+	 * outage cannot turn into a 2.7 MB download every few minutes, forever, for
+	 * every site running this plugin. hayahora.futbol asks users of these
+	 * endpoints to be good citizens and that request is easy to honour.
+	 *
+	 * @param int    $min_isps Minimum ISPs with blocks to trigger.
+	 * @param string $mode     'global' or 'own_ip'.
+	 * @param array  $own_ips  This site's public IPv4 addresses.
+	 * @return array
+	 */
+	private function check_via_json( $min_isps, $mode, $own_ips ) {
+		$result = $this->blank_result( $mode, 'json' );
+
+		$cooldown = (int) apply_filters( 'ayudawp_blg_json_cooldown', HOUR_IN_SECONDS );
+		if ( $cooldown > 0 && get_transient( self::JSON_COOLDOWN_KEY ) ) {
+			$result['error'] = 'El respaldo JSON ya se consultó hace poco; se mantiene el estado actual.';
+			return $result;
+		}
 
 		$url      = (string) apply_filters( 'ayudawp_blg_json_url', $this->json_url );
 		$response = wp_remote_get( $url, array(
-			'timeout'     => 20,
-			'redirection' => 3,
-			'user-agent'  => 'BypassLaLigaGate/' . AYUDAWP_BLG_VERSION . '; ' . home_url( '/' ),
+			'timeout'             => 20,
+			'redirection'         => 3,
+			'limit_response_size' => (int) apply_filters( 'ayudawp_blg_json_max_bytes', 12 * MB_IN_BYTES ),
+			'user-agent'          => 'BypassLaLigaGate/' . AYUDAWP_BLG_VERSION . '; ' . home_url( '/' ),
 		) );
+
+		if ( $cooldown > 0 ) {
+			set_transient( self::JSON_COOLDOWN_KEY, 1, $cooldown );
+		}
 
 		if ( is_wp_error( $response ) ) {
 			$result['error'] = $response->get_error_message();
@@ -168,8 +443,16 @@ class AyudaWP_BLG_Block_Checker {
 			return $result;
 		}
 
-		$body = wp_remote_retrieve_body( $response );
+		$body = (string) wp_remote_retrieve_body( $response );
+
+		$no_room = $this->memory_shortfall( strlen( $body ) );
+		if ( '' !== $no_room ) {
+			$result['error'] = $no_room;
+			return $result;
+		}
+
 		$json = json_decode( $body, true );
+		unset( $body );
 
 		if ( ! is_array( $json ) ) {
 			$result['error'] = 'Respuesta JSON no válida';
@@ -178,159 +461,131 @@ class AyudaWP_BLG_Block_Checker {
 
 		if ( ! empty( $json['lastUpdate'] ) && is_string( $json['lastUpdate'] ) ) {
 			$result['last_update'] = $json['lastUpdate'];
+			$ts                    = strtotime( $json['lastUpdate'] );
+			if ( false !== $ts ) {
+				$result['last_update_ts'] = (int) $ts;
+				$stale                    = $this->staleness_error( (int) $ts );
+				if ( '' !== $stale ) {
+					$result['error']      = $stale;
+					$result['error_kind'] = 'stale';
+					return $result;
+				}
+			}
 		}
 
-		$blocked_isps           = $this->count_blocked_isps( $json );
-		$result['blocked_isps'] = $blocked_isps;
-		$result['blocked']      = ( $blocked_isps >= max( 1, $min_isps ) );
+		$breakdown              = $this->analyse_json( $json, $mode, $own_ips );
+		$result['blocked_isps'] = count( $breakdown['isps'] );
+		$result['isp_names']    = array_values( $breakdown['isps'] );
+		$result['blocked_ips']  = count( $breakdown['ips'] );
+		$result['blocked']      = ( $result['blocked_isps'] >= $min_isps );
+
+		if ( 'own_ip' === $mode ) {
+			$result['matched'] = array_values( $breakdown['ips'] );
+		}
 
 		return $result;
 	}
 
 	/**
-	 * Count distinct ISPs that have at least one blocked IP.
+	 * Refuse to decode a payload that will not fit in the memory left.
 	 *
-	 * Iterates the JSON data looking for objects with 'isp' and blocked
-	 * status. Returns the number of unique ISP names with blocks.
-	 * When ISP info is not available, falls back to the simple IP map
-	 * and treats all blocked IPs as coming from a single ISP.
+	 * A fatal error here is not just a failed check: it aborts the whole cron
+	 * run, so anything scheduled after this plugin's hook never executes either.
 	 *
-	 * @param array $json Decoded JSON data.
-	 * @return int Number of ISPs with blocked IPs.
+	 * An unlimited memory_limit (-1) means there is nothing to compare against,
+	 * so the decode goes ahead.
+	 *
+	 * The limit is a parameter so the harness can exercise the rejecting branch:
+	 * wp-cli runs with memory_limit=-1 and refuses ini_set(), so a test that
+	 * read the limit from the environment could only ever see "there is room"
+	 * and would report a pass without having tried anything.
+	 *
+	 * @param int      $bytes Size of the raw JSON body.
+	 * @param int|null $limit Memory limit in bytes, null to read it from PHP.
+	 * @return string Error message, empty when there is room.
 	 */
-	private function count_blocked_isps( $json ) {
-		$blocked_by_isp = array();
-
-		/* Find the data array */
-		$ips_data = null;
-		foreach ( array( 'ips', 'ip', 'data', 'results' ) as $key ) {
-			if ( isset( $json[ $key ] ) && is_array( $json[ $key ] ) ) {
-				$ips_data = $json[ $key ];
-				break;
-			}
+	private function memory_shortfall( $bytes, $limit = null ) {
+		if ( null === $limit ) {
+			$limit = wp_convert_hr_to_bytes( ini_get( 'memory_limit' ) );
+		}
+		if ( $limit <= 0 ) {
+			return '';
 		}
 
-		if ( ! is_array( $ips_data ) ) {
-			/*
-			 * Fallback: use extract_ip_map for simple structures without ISP info.
-			 * Without ISP data we treat all blocked IPs as 1 ISP (conservative).
-			 */
-			$ip_map  = $this->extract_ip_map( $json );
-			$has_any = false;
-			foreach ( $ip_map as $blocked ) {
-				if ( true === $blocked ) {
-					$has_any = true;
-					break;
-				}
-			}
-			return $has_any ? 1 : 0;
+		$needed    = $bytes * self::JSON_DECODE_FACTOR;
+		$available = $limit - memory_get_usage( true );
+
+		if ( $needed < $available ) {
+			return '';
 		}
 
-		foreach ( $ips_data as $index => $entry ) {
-			if ( ! is_array( $entry ) || empty( $entry['ip'] ) ) {
-				continue;
-			}
-
-			$isp     = ! empty( $entry['isp'] ) ? strtolower( trim( $entry['isp'] ) ) : 'unknown';
-			$blocked = $this->extract_blocked_from_object( $entry );
-
-			if ( true === $blocked ) {
-				$blocked_by_isp[ $isp ] = true;
-			}
-		}
-
-		return count( $blocked_by_isp );
+		return sprintf(
+			'El respaldo JSON (%s) no cabe en la memoria disponible (%s); se mantiene el estado actual.',
+			size_format( $bytes ),
+			size_format( max( 0, $available ) )
+		);
 	}
 
 	/**
-	 * Extract an IP => blocked map from the JSON data.
+	 * Walk the JSON dataset and collect currently-blocked IPs and ISPs.
 	 *
-	 * Handles various JSON structures that hayahora.futbol may return.
-	 *
-	 * @param array $json Decoded JSON data.
-	 * @return array Associative array of IP => bool.
+	 * @param array  $json    Decoded JSON data.
+	 * @param string $mode    'global' or 'own_ip'.
+	 * @param array  $own_ips This site's public IPv4 addresses.
+	 * @return array{isps: array, ips: array}
 	 */
-	private function extract_ip_map( $json ) {
-		$map = array();
+	private function analyse_json( $json, $mode, $own_ips ) {
+		$isps = array();
+		$ips  = array();
 
-		/* Try known keys first */
-		$ips_data = null;
-		foreach ( array( 'ips', 'ip', 'data', 'results' ) as $key ) {
+		$entries = null;
+		foreach ( array( 'data', 'ips', 'ip', 'results' ) as $key ) {
 			if ( isset( $json[ $key ] ) && is_array( $json[ $key ] ) ) {
-				$ips_data = $json[ $key ];
+				$entries = $json[ $key ];
 				break;
 			}
 		}
 
-		/* Fallback: check if root keys are all IPs */
-		if ( null === $ips_data && is_array( $json ) ) {
-			$all_ips = true;
-			foreach ( $json as $k => $v ) {
-				if ( ! filter_var( $k, FILTER_VALIDATE_IP ) ) {
-					$all_ips = false;
-					break;
-				}
+		if ( ! is_array( $entries ) ) {
+			return array( 'isps' => $isps, 'ips' => $ips );
+		}
+
+		foreach ( $entries as $key => $entry ) {
+			if ( ! is_array( $entry ) ) {
+				continue;
 			}
-			if ( $all_ips && ! empty( $json ) ) {
-				$ips_data = $json;
+
+			/* Both {"data":[{"ip":…}]} and {"1.2.3.4":{…}} shapes. */
+			$ip = ! empty( $entry['ip'] ) ? (string) $entry['ip'] : ( is_string( $key ) ? $key : '' );
+			if ( '' === $ip || ! filter_var( $ip, FILTER_VALIDATE_IP ) ) {
+				continue;
+			}
+
+			if ( 'own_ip' === $mode && ! in_array( $ip, $own_ips, true ) ) {
+				continue;
+			}
+
+			if ( true !== $this->extract_blocked_from_object( $entry ) ) {
+				continue;
+			}
+
+			$ips[ $ip ] = $ip;
+
+			$isp = ! empty( $entry['isp'] ) ? trim( (string) $entry['isp'] ) : '';
+			if ( '' !== $isp ) {
+				$isps[ strtolower( $isp ) ] = $isp;
 			}
 		}
 
-		if ( ! is_array( $ips_data ) ) {
-			return $map;
+		/*
+		 * A dataset without ISP labels still tells us something is blocked;
+		 * count it as one operator so min_isps=1 keeps working.
+		 */
+		if ( empty( $isps ) && ! empty( $ips ) ) {
+			$isps['unknown'] = 'desconocido';
 		}
 
-		foreach ( $ips_data as $ip => $value ) {
-			/*
-			 * Handle numerically-indexed arrays where each element
-			 * is an object with 'ip' and 'stateChanges' fields.
-			 * Example: {"data": [{"ip": "1.2.3.4", "isp": "X", "stateChanges": [...]}]}
-			 */
-			if ( is_int( $ip ) && is_array( $value ) && ! empty( $value['ip'] ) ) {
-				$real_ip = $value['ip'];
-				$blocked = $this->extract_blocked_from_object( $value );
-				if ( null !== $blocked ) {
-					/* If any ISP entry for this IP is blocked, mark as blocked */
-					if ( ! isset( $map[ $real_ip ] ) || true === $blocked ) {
-						$map[ $real_ip ] = $blocked;
-					}
-				}
-				continue;
-			}
-
-			if ( ! is_string( $ip ) ) {
-				continue;
-			}
-
-			/* Direct boolean or string value */
-			if ( is_bool( $value ) ) {
-				$map[ $ip ] = $value;
-				continue;
-			}
-
-			if ( is_int( $value ) ) {
-				$map[ $ip ] = ( 0 !== $value );
-				continue;
-			}
-
-			if ( is_string( $value ) ) {
-				$normalized = $this->normalize_bool_string( $value );
-				if ( null !== $normalized ) {
-					$map[ $ip ] = $normalized;
-				}
-				continue;
-			}
-
-			/* Nested object with stateChanges or blocked key */
-			if ( is_array( $value ) ) {
-				$blocked = $this->extract_blocked_from_object( $value );
-				if ( null !== $blocked ) {
-					$map[ $ip ] = $blocked;
-				}
-			}
-		}
-
-		return $map;
+		return array( 'isps' => $isps, 'ips' => $ips );
 	}
 
 	/**
